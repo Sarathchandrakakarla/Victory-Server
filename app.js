@@ -32,6 +32,20 @@ const getConnection = (callback) => {
 
 // Routes
 app.get("/", (req, res) => {
+  let hash = bcrypt.hash("kscr", 10).then((re) => {
+    console.log(re);
+  });
+  bcrypt.compare(
+    "kscr",
+    "$2b$10$OgMzZUWqudjdTdgSwMmV0OYrpqtxRnrcizZiyxGdHwdbksvy3E90m",
+    (err, suc) => {
+      if (err) {
+        console.log(err);
+      } else {
+        console.log(suc);
+      }
+    }
+  );
   res.send("Welcome Sarath");
 });
 
@@ -52,25 +66,28 @@ app.post("/admin_login", (req, res) => {
           return res.json({ success: false, message: err.message });
         }
         if (rows.length === 0) {
-          return res
-            .status(404)
-            .json({ success: false, message: "User Not Found" });
+          return res.json({ success: false, message: "User Not Found" });
         }
-        bcrypt.compare(Password, rows[0].Admin_Hash, (err, result) => {
-          if (err) {
-            return res.json({ success: false, message: err.message });
+        bcrypt.compare(
+          Password,
+          rows[0].Admin_Hash.toString().replace("$2y$", "$2b$"),
+          (err, result) => {
+            if (err) {
+              return res.json({ success: false, message: err.message });
+            }
+            if (!result) {
+              return res.json({
+                success: false,
+                message: "Incorrect Password",
+              });
+            }
+            res.json({
+              success: true,
+              data: { Name: rows[0].Admin_Name },
+              message: "",
+            });
           }
-          if (!result) {
-            return res
-              .status(401)
-              .json({ success: false, message: "Incorrect Password" });
-          }
-          res.json({
-            success: true,
-            data: { Admin_Name: rows[0].Admin_Name },
-            message: "",
-          });
-        });
+        );
       }
     );
   });
@@ -93,21 +110,28 @@ app.post("/faculty_login", (req, res) => {
           return res.json({ success: false, message: err.message });
         }
         if (rows.length === 0) {
-          return res
-            .status(404)
-            .json({ success: false, message: "User Not Found" });
+          return res.json({ success: false, message: "User Not Found" });
         }
-        bcrypt.compare(Password, rows[0].Fac_Hash, (err, result) => {
-          if (err) {
-            return res.json({ success: false, message: err.message });
+        bcrypt.compare(
+          Password,
+          rows[0].Fac_Hash.toString().replace("$2y$", "$2b$"),
+          (err, result) => {
+            if (err) {
+              return res.json({ success: false, message: err.message });
+            }
+            if (!result) {
+              return res.json({
+                success: false,
+                message: "Incorrect Password",
+              });
+            }
+            res.json({
+              success: true,
+              data: { Name: rows[0].Faculty_Name },
+              message: "",
+            });
           }
-          if (!result) {
-            return res
-              .status(401)
-              .json({ success: false, message: "Incorrect Password" });
-          }
-          res.json({ success: true, message: "" });
-        });
+        );
       }
     );
   });
@@ -130,21 +154,28 @@ app.post("/student_login", (req, res) => {
           return res.json({ success: false, message: err.message });
         }
         if (rows.length === 0) {
-          return res
-            .status(404)
-            .json({ success: false, message: "User Not Found" });
+          return res.json({ success: false, message: "User Not Found" });
         }
-        bcrypt.compare(Password, rows[0].Stu_Hash, (err, result) => {
-          if (err) {
-            return res.json({ success: false, message: err.message });
+        bcrypt.compare(
+          Password,
+          rows[0].Stu_Hash.toString().replace("$2y$", "$2b$"),
+          (err, result) => {
+            if (err) {
+              return res.json({ success: false, message: err.message });
+            }
+            if (!result) {
+              return res.json({
+                success: false,
+                message: "Incorrect Password",
+              });
+            }
+            res.json({
+              success: true,
+              data: { Name: rows[0].Stu_Name },
+              message: "",
+            });
           }
-          if (!result) {
-            return res
-              .status(401)
-              .json({ success: false, message: "Incorrect Password" });
-          }
-          res.json({ success: true, message: "" });
-        });
+        );
       }
     );
   });
@@ -167,9 +198,7 @@ app.post("/student/viewdetails", (req, res) => {
           return res.json({ success: false, message: err.message });
         }
         if (rows.length === 0) {
-          return res
-            .status(404)
-            .json({ success: false, message: "Student Not Found" });
+          return res.json({ success: false, message: "Student Not Found" });
         }
         res.json({ success: true, data: rows[0] });
       }
@@ -355,6 +384,259 @@ app.post("/student/attendance/upload", async (req, res) => {
     // Handle errors
     res.json({ success: false, message: error.message });
   }
+});
+
+app.post("/student/attendance/report", (req, res) => {
+  let { Class, Section, Type, AbsentType, Date } = req.body;
+  function getDetails(connection, id, type) {
+    return new Promise((resolve, reject) => {
+      connection.query(
+        "SELECT First_Name AS Name,Stu_Class AS Class,Stu_Section AS Section,Mobile FROM student_master_data WHERE Id_No = '" +
+          id +
+          "'",
+        (err, results) => {
+          if (err) {
+            return resolve(err);
+          } else {
+            resolve({
+              Id_No: id,
+              Name: results[0].Name,
+              Class: results[0].Class,
+              Section: results[0].Section,
+              Mobile: results[0].Mobile,
+              Type: type,
+            });
+          }
+        }
+      );
+    });
+  }
+  function sortAttendance(data) {
+    let classes = ["PreKG", "LKG", "UKG"];
+    for (var i = 1; i <= 10; i++) {
+      classes.push(i + " CLASS");
+    }
+    let sections = ["A", "B", "C", "D"];
+    let sortedData = {};
+    classes.forEach((cls) => {
+      if (
+        !Object.keys(sortedData).includes(cls) &&
+        Object.keys(data).filter((cls_sec) => {
+          if (cls_sec.includes(cls)) {
+            return cls_sec;
+          }
+        }).length != 0
+      ) {
+        sortedData[cls] = {};
+      }
+      sections.forEach((sec) => {
+        if (Object.keys(sortedData).includes(cls)) {
+          if (
+            Object.keys(data).filter((cls_sec) => {
+              if (
+                cls_sec[cls_sec.length - 1] == sec &&
+                cls_sec.substring(0, cls_sec.length - 1) == cls
+              ) {
+                return cls_sec;
+              }
+            }).length != 0 &&
+            !Object.keys(sortedData[cls]).includes(sec)
+          ) {
+            sortedData[cls][sec] = data[cls + sec];
+          }
+        }
+      });
+    });
+    return sortedData;
+  }
+  function getAttendanceData(connection, id, name, section, mobile, type) {
+    return new Promise((resolve) => {
+      let query =
+        "SELECT * FROM `attendance_daily` WHERE Id_No = '" +
+        id +
+        "' AND Date = '" +
+        Date +
+        "' AND " +
+        Type +
+        "";
+      if (type == "Both") {
+        query += " IN ('A','L')";
+      } else {
+        query += " = '" + type + "'";
+      }
+      connection.query(query, (err, results) => {
+        if (err) {
+          return resolve(err);
+        }
+        if (results.length != 0) {
+          return resolve({
+            Id_No: id,
+            Name: name,
+            Class: Class,
+            Section: section,
+            Mobile: mobile,
+            Type: results[0][Type],
+          });
+        } else {
+          return resolve(null);
+        }
+      });
+    });
+  }
+  getConnection(async (err, connection) => {
+    let query =
+      "SELECT First_Name AS Name,Id_No,Stu_Section AS Section,Mobile FROM `student_master_data` WHERE Stu_Class = ";
+    if (!Class && !Section) {
+      let att_promise = new Promise((resolve) => {
+        let query =
+          "SELECT * FROM `attendance_daily` WHERE Date = '" +
+          Date +
+          "' AND " +
+          Type;
+        if (AbsentType == "Both") {
+          query += " IN ('A','L')";
+        } else {
+          query += " = '" + AbsentType + "'";
+        }
+        connection.query(query, (err, rows) => {
+          if (err) {
+            return resolve(err);
+          } else {
+            if (rows.length == 0) {
+              resolve([]);
+            } else {
+              resolve(rows.map((row) => [row.Id_No, row[Type]]));
+            }
+          }
+        });
+      });
+      Promise.resolve(att_promise).then((value) => {
+        if (value.length == 0) {
+          res.json({ success: true, data: [] });
+        } else {
+          let promises = [];
+          value.forEach((student) => {
+            promises.push(getDetails(connection, student[0], student[1]));
+          });
+          Promise.all(promises).then((value) => {
+            let data = {};
+            value.map((student) => {
+              if (
+                !Object.keys(data).includes(student.Class + student.Section)
+              ) {
+                data[student.Class + student.Section] = [];
+              }
+              data[student.Class + student.Section].push(student);
+            });
+            data = sortAttendance(data);
+            res.json({ success: true, data: data });
+          });
+        }
+      });
+    } else if (!Class && Section) {
+      return res.json({ success: false, message: "Section Only not Allowed" });
+    } else {
+      if (Class && !Section) {
+        query += "'" + Class + "'";
+      } else if (Class && Section) {
+        query += "'" + Class + "' AND Stu_Section = '" + Section + "'";
+      }
+      new Promise((resolve) => {
+        connection.query(query, (err, rows) => {
+          if (err) resolve(err);
+          else
+            resolve(
+              rows.map((row) => [row.Id_No, row.Name, row.Section, row.Mobile])
+            );
+        });
+      }).then((ids) => {
+        let promises = [];
+        ids.forEach((student) => {
+          promises.push(
+            getAttendanceData(
+              connection,
+              student[0],
+              student[1],
+              student[2],
+              student[3],
+              AbsentType
+            )
+          );
+        });
+        Promise.all(promises)
+          .then((value) => {
+            let data = {};
+            value.map((student) => {
+              if (student) {
+                if (!Object.keys(data).includes(student.Class)) {
+                  data[student.Class] = {};
+                }
+                if (
+                  !Object.keys(data[student.Class]).includes(student.Section)
+                ) {
+                  data[student.Class][student.Section] = [];
+                }
+                data[student.Class][student.Section].push(student);
+              }
+            });
+            res.json({ success: true, data: data });
+          })
+          .catch((err) => {
+            res.json({ success: false, message: err });
+          });
+      });
+    }
+  });
+});
+
+app.post("/admin/resetpassword", (req, res) => {
+  let { Username, OldPassword, NewPassword } = req.body;
+  getConnection((err, connection) => {
+    if (err) {
+      return res.json({ success: false, message: err });
+    }
+    connection.query(
+      "SELECT * FROM `admin` WHERE Admin_Id_No = ? AND Admin_Password = ?",
+      [Username, OldPassword],
+      (err, result) => {
+        if (err) {
+          return res.json({ success: false, message: err });
+        }
+        if (result.length == 0) {
+          return res.json({ success: false, message: "Invalid Old Password" });
+        }
+        bcrypt.hash(NewPassword, 10).then((hashed) => {
+          let hashed_pass = hashed.replace("$2b$", "$2y$");
+          connection.query(
+            "UPDATE `admin` SET Admin_Password = ?,Admin_Hash = ? WHERE Admin_Id_No = ?",
+            [NewPassword, hashed_pass, Username],
+            (err, result) => {
+              if (err) {
+                return res.json({ success: false, message: err });
+              }
+              return res.json({
+                success: true,
+                message: "Password Updated Successfully",
+              });
+            }
+          );
+        });
+        /* connection.query(
+          "UPDATE `admin` SET Admin_Password = ? WHERE Admin_Id_No = ?",
+          [NewPassword, Username],
+          (err, result) => {
+            if (err) {
+              return res.json({ success: false, message: err });
+            }
+            return res.json({
+              success: true,
+              message: "Password Updated Successfully",
+            });
+          }
+        ); */
+      }
+    );
+  });
 });
 
 app.listen(PORT, "0.0.0.0", (error) => {
