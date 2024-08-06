@@ -200,7 +200,7 @@ app.post("/student/viewdetails", (req, res) => {
         if (rows.length === 0) {
           return res.json({ success: false, message: "Student Not Found" });
         }
-        res.json({ success: true, data: rows[0] });
+        res.json({ success: true, data: Object.entries(rows[0]) });
       }
     );
   });
