@@ -32,20 +32,6 @@ const getConnection = (callback) => {
 
 // Routes
 app.get("/", (req, res) => {
-  let hash = bcrypt.hash("kscr", 10).then((re) => {
-    console.log(re);
-  });
-  bcrypt.compare(
-    "kscr",
-    "$2b$10$OgMzZUWqudjdTdgSwMmV0OYrpqtxRnrcizZiyxGdHwdbksvy3E90m",
-    (err, suc) => {
-      if (err) {
-        console.log(err);
-      } else {
-        console.log(suc);
-      }
-    }
-  );
   res.send("Welcome Sarath");
 });
 
@@ -586,6 +572,274 @@ app.post("/student/attendance/report", (req, res) => {
           });
       });
     }
+  });
+});
+
+app.post("/fetchexams", (req, res) => {
+  const { Class } = req.body;
+  getConnection((err, connection) => {
+    if (err) {
+      return res.json({ success: false, message: err });
+    }
+    connection.query(
+      "SELECT * FROM `class_wise_examination` WHERE Class = ?",
+      [Class],
+      (err, rows) => {
+        if (err) {
+          return res.json({ success: false, message: err });
+        }
+        if (rows.length == 0) {
+          return res.json({ success: true, data: ["No Exam Found"] });
+        }
+        return res.json({ success: true, data: rows.map((row) => row.Exam) });
+      }
+    );
+  });
+});
+
+app.post("/classwisemarks", (req, res) => {
+  let { Class, Section, Exam, MarksType } = req.body;
+  let Max;
+  function getMarks(connection, id, name, subjects, max_subjects) {
+    return new Promise((resolve, reject) => {
+      connection.query(
+        "SELECT * FROM stu_marks WHERE Id_No = ? AND Exam = ?",
+        [id, Exam],
+        (err, rows) => {
+          if (err) {
+            reject(err);
+          }
+          let marks = { [id]: { Name: name, Subjects: {} } };
+          if (rows.length == 0) {
+            subjects.forEach((subject) => {
+              marks[id]["Subjects"][subject] = 0;
+            });
+            marks[id]["Total"] = 0;
+            marks[id]["Percentage"] = "";
+            marks[id]["Grade"] = "";
+          } else {
+            let sum = 0,
+              max_sum = parseInt(Max) * subjects.length;
+            for (let i = 0; i < subjects.length; i++) {
+              marks[id]["Subjects"][subjects[i]] = rows[0]["sub" + (i + 1)];
+              try {
+                if (
+                  marks[id]["Subjects"][subjects[i]] == "A" ||
+                  marks[id]["Subjects"][subjects[i]] == ""
+                ) {
+                  sum += 0;
+                } else {
+                  sum += parseInt(marks[id]["Subjects"][subjects[i]]);
+                }
+              } catch (err) {
+                sum = 0;
+              }
+              marks[id]["Total"] = sum;
+              if (MarksType == "Normal") {
+                marks[id]["Percentage"] = parseFloat(
+                  (sum / parseInt(max_sum)) * 100
+                ).toFixed(2);
+                if (
+                  marks[id]["Percentage"] >= 80 &&
+                  marks[id]["Percentage"] <= 100
+                ) {
+                  marks[id]["Grade"] = "Excellent";
+                } else if (
+                  marks[id]["Percentage"] >= 70 &&
+                  marks[id]["Percentage"] < 80
+                ) {
+                  marks[id]["Grade"] = "Good";
+                } else if (
+                  marks[id]["Percentage"] >= 60 &&
+                  marks[id]["Percentage"] < 70
+                ) {
+                  marks[id]["Grade"] = "Satisfactory";
+                } else if (
+                  marks[id]["Percentage"] >= 50 &&
+                  marks[id]["Percentage"] < 60
+                ) {
+                  marks[id]["Grade"] = "Above Average";
+                } else if (
+                  marks[id]["Percentage"] >= 35 &&
+                  marks[id]["Percentage"] < 50
+                ) {
+                  marks[id]["Grade"] = "Average";
+                } else if (
+                  marks[id]["Percentage"] > 0 &&
+                  marks[id]["Percentage"] < 35
+                ) {
+                  marks[id]["Grade"] = "Below Average";
+                } else {
+                  marks[id]["Grade"] = "";
+                }
+              } else if (MarksType == "GPA") {
+                let sum = 0;
+                subjects.forEach((subject, index) => {
+                  let mark =
+                    (marks[id]["Subjects"][subject] / max_subjects[index]) *
+                    100;
+                  if (mark >= 91 && mark <= 100) {
+                    sum += 10;
+                  } else if (mark >= 81 && mark <= 90) {
+                    sum += 9;
+                  } else if (mark >= 71 && mark <= 80) {
+                    sum += 8;
+                  } else if (mark >= 61 && mark <= 70) {
+                    sum += 7;
+                  } else if (mark >= 51 && mark <= 60) {
+                    sum += 6;
+                  } else if (mark >= 41 && mark <= 50) {
+                    sum += 5;
+                  } else if (mark >= 35 && mark <= 40) {
+                    sum += 4;
+                  } else if (mark >= 0 && mark <= 34) {
+                    sum += 3;
+                  }
+                });
+                let avg = parseFloat(sum / subjects.length).toFixed(1),
+                  grade;
+                if (avg == 10) {
+                  grade = "A1";
+                } else if (avg >= 9 && avg < 10) {
+                  grade = "A2";
+                } else if (avg >= 8 && avg < 9) {
+                  grade = "B1";
+                } else if (avg >= 7 && avg < 8) {
+                  grade = "B2";
+                } else if (avg >= 6 && avg < 7) {
+                  grade = "C1";
+                } else if (avg >= 5 && avg < 6) {
+                  grade = "C2";
+                } else if (avg >= 4 && avg < 5) {
+                  grade = "D1";
+                } else if (avg >= 3 && avg < 4) {
+                  grade = "D2";
+                } else if (avg >= 0 && avg < 3) {
+                  grade = "E1";
+                }
+                marks[id]["GPA"] = avg;
+                marks[id]["Grade"] = grade;
+              }
+            }
+          }
+          resolve(marks);
+        }
+      );
+    });
+  }
+
+  function checkData(data) {
+    let dataexists = false;
+    data.forEach((student_details) => {
+      if (Object.values(student_details)[0].Total != 0) {
+        dataexists = true;
+      }
+      if (dataexists) return;
+    });
+    return dataexists;
+  }
+
+  function sortMarks(data) {
+    if (!checkData(data)) {
+      return "Data Not Found";
+    }
+    let sortedData = data.sort((a, b) => {
+      const totalA = Object.values(a)[0].Total;
+      const totalB = Object.values(b)[0].Total;
+      return totalB - totalA;
+    });
+    return ranking(sortedData);
+  }
+
+  function ranking(data) {
+    let rank = 0;
+    let lastTotal = null;
+    data.forEach((item) => {
+      const currentTotal = Object.values(item)[0].Total;
+      if (currentTotal !== lastTotal) {
+        rank = rank + 1;
+      }
+      Object.values(item)[0]["Rank"] = rank;
+
+      lastTotal = currentTotal;
+    });
+    return data;
+  }
+  getConnection((err, connection) => {
+    if (err) {
+      return res.json({ success: false, message: err });
+    }
+    let query =
+      "SELECT Id_No,First_Name FROM `student_master_data` WHERE Stu_Class = '" +
+      Class +
+      "'";
+    if (Section) query += " AND Stu_Section = '" + Section + "'";
+    connection.query(query, (err, rows) => {
+      if (err) return res.json({ success: false, message: err });
+      if (rows.length == 0)
+        return res.json({
+          success: false,
+          message: "Class and Section Not Available",
+        });
+      Promise.resolve(
+        new Promise((resolve) => {
+          connection.query(
+            "SELECT Max_Marks FROM `class_wise_examination` WHERE Class = ? AND Exam = ?",
+            [Class, Exam],
+            (err, max_marks) => {
+              if (err) return res.json({ success: false, message: err });
+              Max = max_marks[0].Max_Marks;
+              resolve();
+            }
+          );
+        })
+      ).then(() => {
+        Promise.resolve(
+          new Promise((resolve) => {
+            connection.query(
+              "SELECT * FROM `class_wise_subjects` WHERE Class = ? AND Exam = ?",
+              [Class, Exam],
+              (err, subjects) => {
+                if (err) return res.json({ success: false, message: err });
+                if (subjects.length == 0)
+                  return res.json({
+                    success: false,
+                    message: "No Subjects Found for this Class and Exam",
+                  });
+                resolve([
+                  subjects.map((subject) => subject.Subjects),
+                  subjects.map((subject) => subject.Max_Marks),
+                ]);
+              }
+            );
+          })
+        ).then((subjects) => {
+          let promises = [];
+          rows.forEach((row) => {
+            promises.push(
+              getMarks(
+                connection,
+                row.Id_No,
+                row.First_Name,
+                subjects[0],
+                subjects[1]
+              )
+            );
+          });
+          Promise.all(promises).then((val) => {
+            let data = sortMarks(val);
+            if (data == "Data Not Found") {
+              return res.json({ success: false, message: "Data Not Found" });
+            }
+            return res.json({
+              success: true,
+              data: data,
+              Subjects: subjects[0],
+            });
+          });
+        });
+      });
+    });
   });
 });
 
