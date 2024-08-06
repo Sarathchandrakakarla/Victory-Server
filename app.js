@@ -610,6 +610,7 @@ app.post("/classwisemarks", (req, res) => {
             reject(err);
           }
           let marks = { [id]: { Name: name, Class: cls, Subjects: {} } };
+          let Max_Sum = 0;
           if (rows.length == 0) {
             subjects.forEach((subject) => {
               marks[id]["Subjects"][subject] = 0;
@@ -620,6 +621,7 @@ app.post("/classwisemarks", (req, res) => {
           } else {
             let sum = 0,
               max_sum = parseInt(Max) * subjects.length;
+            Max_Sum = max_sum;
             for (let i = 0; i < subjects.length; i++) {
               marks[id]["Subjects"][subjects[i]] = rows[0]["sub" + (i + 1)];
               try {
@@ -722,7 +724,7 @@ app.post("/classwisemarks", (req, res) => {
               }
             }
           }
-          resolve(marks);
+          resolve([marks, Max_Sum]);
         }
       );
     });
@@ -828,7 +830,12 @@ app.post("/classwisemarks", (req, res) => {
             );
           });
           Promise.all(promises).then((val) => {
-            let data = sortMarks(val);
+            let Max_Sum = val[0][1];
+            let data = [];
+            val.forEach((obj) => {
+              data.push(obj[0]);
+            });
+            data = sortMarks(data);
             if (data == "Data Not Found") {
               return res.json({ success: false, message: "Data Not Found" });
             }
@@ -836,6 +843,7 @@ app.post("/classwisemarks", (req, res) => {
               success: true,
               data: data,
               Subjects: subjects[0],
+              Max_Sum: Max_Sum,
             });
           });
         });
