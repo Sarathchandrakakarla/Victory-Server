@@ -600,7 +600,7 @@ app.post("/fetchexams", (req, res) => {
 app.post("/classwisemarks", (req, res) => {
   let { Class, Section, Exam, MarksType } = req.body;
   let Max;
-  function getMarks(connection, id, name, subjects, max_subjects) {
+  function getMarks(connection, id, name, cls, subjects, max_subjects) {
     return new Promise((resolve, reject) => {
       connection.query(
         "SELECT * FROM stu_marks WHERE Id_No = ? AND Exam = ?",
@@ -609,7 +609,7 @@ app.post("/classwisemarks", (req, res) => {
           if (err) {
             reject(err);
           }
-          let marks = { [id]: { Name: name, Subjects: {} } };
+          let marks = { [id]: { Name: name, Class: cls, Subjects: {} } };
           if (rows.length == 0) {
             subjects.forEach((subject) => {
               marks[id]["Subjects"][subject] = 0;
@@ -770,7 +770,7 @@ app.post("/classwisemarks", (req, res) => {
       return res.json({ success: false, message: err });
     }
     let query =
-      "SELECT Id_No,First_Name FROM `student_master_data` WHERE Stu_Class = '" +
+      "SELECT Id_No,First_Name,Stu_Section AS Section FROM `student_master_data` WHERE Stu_Class = '" +
       Class +
       "'";
     if (Section) query += " AND Stu_Section = '" + Section + "'";
@@ -821,6 +821,7 @@ app.post("/classwisemarks", (req, res) => {
                 connection,
                 row.Id_No,
                 row.First_Name,
+                Class + " " + row.Section,
                 subjects[0],
                 subjects[1]
               )
