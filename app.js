@@ -884,19 +884,43 @@ app.post("/admin/resetpassword", (req, res) => {
             }
           );
         });
-        /* connection.query(
-          "UPDATE `admin` SET Admin_Password = ? WHERE Admin_Id_No = ?",
-          [NewPassword, Username],
-          (err, result) => {
-            if (err) {
-              return res.json({ success: false, message: err });
+      }
+    );
+  });
+});
+
+app.post("/faculty/resetpassword", (req, res) => {
+  let { Username, OldPassword, NewPassword } = req.body;
+  getConnection((err, connection) => {
+    if (err) {
+      return res.json({ success: false, message: err });
+    }
+    connection.query(
+      "SELECT * FROM `faculty` WHERE Id_No = ? AND Password = ?",
+      [Username, OldPassword],
+      (err, result) => {
+        if (err) {
+          return res.json({ success: false, message: err });
+        }
+        if (result.length == 0) {
+          return res.json({ success: false, message: "Invalid Old Password" });
+        }
+        bcrypt.hash(NewPassword, 10).then((hashed) => {
+          let hashed_pass = hashed.replace("$2b$", "$2y$");
+          connection.query(
+            "UPDATE `faculty` SET Password = ?,Fac_Hash = ? WHERE Id_No = ?",
+            [NewPassword, hashed_pass, Username],
+            (err, result) => {
+              if (err) {
+                return res.json({ success: false, message: err });
+              }
+              return res.json({
+                success: true,
+                message: "Password Updated Successfully",
+              });
             }
-            return res.json({
-              success: true,
-              message: "Password Updated Successfully",
-            });
-          }
-        ); */
+          );
+        });
       }
     );
   });
