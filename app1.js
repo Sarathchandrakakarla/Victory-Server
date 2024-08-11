@@ -2,16 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql"); // Use mysql2 for better performance and features
 const bcrypt = require("bcrypt"); // Use bcrypt directly
-const admin = require("firebase-admin");
-const adminapp = require("firebase-admin/app");
-const axios = require("axios");
 const app = express();
 const PORT = 3000;
 
-var serviceAccount = require("./victoryapp-1-firebase-adminsdk-g8vmj-c04789cc7a.json");
-let fbapp = admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -169,22 +162,6 @@ app.post("/student_login", (req, res) => {
             });
           }
         );
-      }
-    );
-  });
-});
-
-app.post("/student/getclass", (req, res) => {
-  let { Id_No } = req.body;
-  getConnection((err, connection) => {
-    if (err)
-      return res.json({ success: false, message: "Database connection error" });
-    connection.query(
-      "SELECT Stu_Class AS Class FROM `student_master_data` WHERE Id_No = ?",
-      [Id_No],
-      (err, rows) => {
-        if (err) return res.json({ success: false, message: err });
-        return res.json({ success: true, Class: rows[0]["Class"] });
       }
     );
   });
@@ -620,182 +597,6 @@ app.post("/fetchexams", (req, res) => {
   });
 });
 
-app.post("/student/getexams", (req, res) => {
-  const { Id_No } = req.body;
-  getConnection((err, connection) => {
-    if (err) {
-      return res.json({ success: false, message: err });
-    }
-    connection.query(
-      "SELECT Stu_Class AS Class FROM `student_master_data` WHERE Id_No = ?",
-      [Id_No],
-      (err, rows) => {
-        if (err) {
-          return res.json({ success: false, message: err });
-        }
-        let Class = rows[0]["Class"];
-        //Class = "1 CLASS";
-        if (
-          Class.toString().includes("Drop") ||
-          Class.toString().includes("Others")
-        ) {
-          return res.json({
-            success: false,
-            message: "Student Passedout or Dropped",
-          });
-        }
-        axios
-          .post("http://192.168.53.107:3000/fetchexams", {
-            Class: Class,
-          })
-          .then((val) => {
-            if (!val.data.success)
-              return res.json({ success: false, message: val.data.message });
-            return res.json({ success: true, data: val.data.data });
-          });
-      }
-    );
-  });
-});
-
-app.post("/student/marks", (req, res) => {
-  const { Id_No, Exam } = req.body;
-  getConnection((err, connection) => {
-    if (err) {
-      return res.json({ success: false, message: err });
-    }
-    connection.query(
-      "SELECT Stu_Class AS Class FROM `student_master_data` WHERE Id_No = ?",
-      [Id_No],
-      (err, rows) => {
-        if (err) {
-          return res.json({ success: false, message: err });
-        }
-        let Class = rows[0]["Class"];
-        //Class = "1 CLASS";
-        if (
-          Class.toString().includes("Drop") ||
-          Class.toString().includes("Others")
-        ) {
-          return res.json({
-            success: false,
-            message: "Student Passedout or Dropped",
-          });
-        }
-        connection.query(
-          "SELECT Max_Marks FROM `class_wise_examination` WHERE Class = ? AND Exam = ?",
-          [Class, Exam],
-          (err, resp) => {
-            if (err) {
-              return res.json({ success: false, message: err });
-            }
-            let Max_Marks = parseInt(resp[0]["Max_Marks"]);
-            let subjects = [],
-              sub_max = {},
-              Max_Total = 0;
-            connection.query(
-              "SELECT * FROM `class_wise_subjects` WHERE Class = ? AND Exam = ?",
-              [Class, Exam],
-              (err, val) => {
-                if (err) {
-                  return res.json({ success: false, message: err });
-                }
-                if (val.length == 0) {
-                  return res.json({
-                    success: false,
-                    message: "Subjects Not Found for this Exam",
-                  });
-                }
-                val.forEach((subject) => {
-                  subjects.push(subject.Subjects);
-                  sub_max[subject.Subjects] = parseInt(subject.Max_Marks);
-                  Max_Total += parseInt(subject.Max_Marks);
-                });
-                let marks = { Subjects: {} };
-                connection.query(
-                  "SELECT * FROM `stu_marks` WHERE Id_No = ? AND Exam = ?",
-                  [Id_No, Exam],
-                  (err, result) => {
-                    if (err) {
-                      return res.json({ success: false, message: err });
-                    }
-                    if (result.length === 0) {
-                      return res.json({
-                        success: false,
-                        message: "Marks not Available for this Exam",
-                      });
-                    }
-                    let sum = 0;
-                    subjects.forEach((subject, index) => {
-                      try {
-                        if (result[0]["sub" + (index + 1)] != "A") {
-                          marks["Subjects"][subject] = parseInt(
-                            result[0]["sub" + (index + 1)]
-                          );
-                        } else {
-                          marks["Subjects"][subject] = 0;
-                        }
-                      } catch (err) {
-                        marks["Subjects"][subject] = 0;
-                      }
-                      sum += marks["Subjects"][subject];
-                    });
-                    marks["Total"] = sum;
-                    let Max_Total = Max_Marks * subjects.length;
-                    let Percentage = parseFloat(
-                      (sum / Max_Total) * 100
-                    ).toFixed(2);
-                    marks["Percentage"] = Percentage;
-                    if (
-                      marks["Percentage"] >= 80 &&
-                      marks["Percentage"] <= 100
-                    ) {
-                      marks["Grade"] = "Excellent";
-                    } else if (
-                      marks["Percentage"] >= 70 &&
-                      marks["Percentage"] < 80
-                    ) {
-                      marks["Grade"] = "Good";
-                    } else if (
-                      marks["Percentage"] >= 60 &&
-                      marks["Percentage"] < 70
-                    ) {
-                      marks["Grade"] = "Satisfactory";
-                    } else if (
-                      marks["Percentage"] >= 50 &&
-                      marks["Percentage"] < 60
-                    ) {
-                      marks["Grade"] = "Above Average";
-                    } else if (
-                      marks["Percentage"] >= 35 &&
-                      marks["Percentage"] < 50
-                    ) {
-                      marks["Grade"] = "Average";
-                    } else if (
-                      marks["Percentage"] > 0 &&
-                      marks["Percentage"] < 35
-                    ) {
-                      marks["Grade"] = "Below Average";
-                    } else {
-                      marks["Grade"] = "";
-                    }
-                    return res.json({
-                      success: true,
-                      data: marks,
-                      Sub_Max: sub_max,
-                      Max_Total: Max_Total,
-                    });
-                  }
-                );
-              }
-            );
-          }
-        );
-      }
-    );
-  });
-});
-
 app.post("/classwisemarks", (req, res) => {
   let { Class, Section, Exam, MarksType } = req.body;
   let Max;
@@ -1058,7 +859,7 @@ app.post("/admin/resetpassword", (req, res) => {
       return res.json({ success: false, message: err });
     }
     connection.query(
-      "SELECT * FROM `admin` WHERE Admin_Id_No = ? AND BINARY Admin_Password = ?",
+      "SELECT * FROM `admin` WHERE Admin_Id_No = ? AND Admin_Password = ?",
       [Username, OldPassword],
       (err, result) => {
         if (err) {
@@ -1095,7 +896,7 @@ app.post("/faculty/resetpassword", (req, res) => {
       return res.json({ success: false, message: err });
     }
     connection.query(
-      "SELECT * FROM `faculty` WHERE Id_No = ? AND BINARY Password = ?",
+      "SELECT * FROM `faculty` WHERE Id_No = ? AND Password = ?",
       [Username, OldPassword],
       (err, result) => {
         if (err) {
@@ -1123,71 +924,6 @@ app.post("/faculty/resetpassword", (req, res) => {
       }
     );
   });
-});
-
-app.post("/student/resetpassword", (req, res) => {
-  let { Username, OldPassword, NewPassword } = req.body;
-  getConnection((err, connection) => {
-    if (err) {
-      return res.json({ success: false, message: err });
-    }
-    connection.query(
-      "SELECT * FROM `student` WHERE Id_No = ? AND BINARY Stu_Password = ?",
-      [Username, OldPassword],
-      (err, result) => {
-        if (err) {
-          return res.json({ success: false, message: err });
-        }
-        if (result.length == 0) {
-          console.log(1);
-          return res.json({ success: false, message: "Invalid Old Password" });
-        }
-        console.log(2);
-        bcrypt.hash(NewPassword, 10).then((hashed) => {
-          let hashed_pass = hashed.replace("$2b$", "$2y$");
-          connection.query(
-            "UPDATE `student` SET Stu_Password = ?,Stu_Hash = ? WHERE Id_No = ?",
-            [NewPassword, hashed_pass, Username],
-            (err, result) => {
-              if (err) {
-                return res.json({ success: false, message: err });
-              }
-              return res.json({
-                success: true,
-                message: "Password Updated Successfully",
-              });
-            }
-          );
-        });
-      }
-    );
-  });
-});
-
-app.post("/notifications/send", (req, res) => {
-  let { Topic, Text } = req.body;
-  if (Topic == "All Members") {
-    Topic = "All";
-  }
-  const message = {
-    notification: {
-      title: "Important Alert",
-      body: Text,
-    },
-    data: {
-      message: Text,
-    },
-    topic: Topic,
-  };
-  admin
-    .messaging()
-    .send(message)
-    .then((response) => {
-      res.json({ success: true, message: "Notifications Sent Successfully" });
-    })
-    .catch((error) => {
-      res.json({ success: false, message: error });
-    });
 });
 
 app.listen(PORT, "0.0.0.0", (error) => {
