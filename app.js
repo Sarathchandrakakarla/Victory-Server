@@ -7,8 +7,7 @@ const adminapp = require("firebase-admin/app");
 const axios = require("axios");
 const app = express();
 const PORT = 3000;
-
-var serviceAccount = require("./victoryapp-1-firebase-adminsdk-g8vmj-c04789cc7a.json");
+var serviceAccount = require("./victoryapp-1-firebase-adminsdk-g8vmj-6190eb8890.json");
 let fbapp = admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -1170,16 +1169,36 @@ app.post("/notifications/send", (req, res) => {
     Topic = "All";
   }
   const message = {
-    notification: {
-      title: "Important Alert",
-      body: Text,
+    message: {
+      topic: Topic,
+      notification: {
+        title: "Important Alert",
+        body: Text,
+      },
     },
-    data: {
-      message: Text,
-    },
-    topic: Topic,
   };
-  admin
+  fetch("https://fcm.googleapis.com/v1/projects/victoryapp-1/messages:send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization:
+        "Bearer ya29.c.c0ASRK0GaXioupB2uDC0I6Dk8fLrOGbdPS2z0_eMDjztqei5FRJoNvzzASOs8fhStvByVbN8KSbcNOgaJLgHOTRltgjFtGZOZ5ysuaXWbi7-dwUavqQyGBt7_PzJVYTfIvCR9RwhKjiLhOXlTbNT7GU_H0t-FXWfI_O1v36jlkXEu7SpZnS1wFBusx3cmUGr-AeQVgnwn7VFO18byb7a8tENTJowadUUQtmaxf9rtyo42ESn1hiXWeLhChC-2jmVFGAU1nBmMSphqv9LnFbuHIt863t4Nnd7C4tpsimQZaeS0VsoxWu8P6SoqRW_rUJ6L-tn5VZXZBppPsXQFgWyOqKbglB1yAA4fGKp61gnnoboGmqI68_Ckztm5pG385K2QbOmtg8FkxkY-apVFlv2MyxzfUU6gUhYszbqsZ9lYV0kcp66mh61ohtvvJ6aB7yqV6nwUhOfttev0gURqYjdxg5ffdXWXJUOQ_R9OdrrSciZwo1peosnrwdXu_tf6prjaYwri44fs32zFMgWtVe13-oaw8hWmUvpOwxe-_1n-xJmolaiz5ppw3VMwi-FcMwQk40WzkuyxpSrl6nJxWXMrw-euk21toJiUpkczQZMbagQep3m5Ylpn2ZIsMY1RvxsO5-xio5a6UY2ipOvRIW5XxYxmoy-rU-e0MQk3Fye-3f69ooxdQOklo8nOZQ8rpj4lldcixRwMk1ekanOrMpQ-IljnwwIFf57hegsl2BMZ402s4qgsWBhMhp7xR05iRxyg5IkZ7bo3s6ivy070jYrWz1umZcsfXcrzlj6cWwRzkuIzWpbhBOls_fJMbnniMfWusysn1gIZMhimzYxwjx1srOIo_szQ2f-UfmgiRaocBXsxvX3_8WyWxstuc53hcQImzzncl5tg0MZM0Og5S26U94OolqZbf-UVxe29MFiX0UujpiiOofg5_YpO3jlpesq8cdIB80jFs2fq95ewclhXsS9zW1Oc7wzF8zqp_4apcoftQVJv21kZyyoJ",
+    },
+    body: JSON.stringify(message),
+  })
+    .then((r) => {
+      if (r.ok) {
+        return res.json({
+          success: true,
+          message: "Notifications Sent Successfully",
+        });
+      }
+      console.log(r);
+    })
+    .catch((err) => {
+      res.json({ success: false, message: err });
+    });
+  /* admin
     .messaging()
     .send(message)
     .then((response) => {
@@ -1187,7 +1206,7 @@ app.post("/notifications/send", (req, res) => {
     })
     .catch((error) => {
       res.json({ success: false, message: error });
-    });
+    }); */
 });
 
 app.listen(PORT, "0.0.0.0", (error) => {
