@@ -20,10 +20,7 @@
     "express": "^4.19.2",
     "firebase": "^10.12.3",
     "firebase-admin": "^12.3.0",
-<<<<<<< HEAD
     "google-auth-library": "^9.13.0",
-=======
->>>>>>> 37c2641d17ae781858e5be9c796d015d23d9acc3
     "mysql": "^2.18.1"
   },
   "devDependencies": {
