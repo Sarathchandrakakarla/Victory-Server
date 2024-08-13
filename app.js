@@ -2,15 +2,15 @@ const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql"); // Use mysql2 for better performance and features
 const bcrypt = require("bcrypt"); // Use bcrypt directly
-const admin = require("firebase-admin");
-const adminapp = require("firebase-admin/app");
+/* const admin = require("firebase-admin");
+const adminapp = require("firebase-admin/app"); */
 const axios = require("axios");
 const app = express();
 const PORT = 3000;
-var serviceAccount = require("./victoryapp-1-firebase-adminsdk-g8vmj-6190eb8890.json");
+/* var serviceAccount = require("./victoryapp-1-firebase-adminsdk-g8vmj-6190eb8890.json");
 let fbapp = admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-});
+}); */
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -119,7 +119,7 @@ app.post("/faculty_login", (req, res) => {
             }
             res.json({
               success: true,
-              data: { Name: rows[0].Faculty_Name },
+              data: { Name: rows[0].Faculty_Name, Role: rows[0].Role },
               message: "",
             });
           }
@@ -394,6 +394,158 @@ app.post("/student/attendance/upload", async (req, res) => {
   }
 });
 
+app.post("/student/vanattendance/view", (req, res) => {
+  let { Route, Type, Date } = req.body;
+  let query1, query2;
+  query1 =
+    "SELECT Id_No,First_Name FROM `student_master_data` WHERE Van_Route = '" +
+    Route +
+    "' AND (Stu_Class LIKE '%CLASS%' OR Stu_Class ='PreKG' OR Stu_Class ='LKG' OR Stu_Class ='UKG')";
+  getConnection((err, connection) => {
+    if (err)
+      return res.json({ success: false, message: "Database connection error" });
+    connection.query(query1, (err, rows) => {
+      connection.release();
+      if (err) {
+        return res.json({ success: false, message: err.message });
+      }
+      if (rows.length === 0) {
+        return res.json({
+          success: false,
+          message: "No Student Found in this Route",
+        });
+      }
+      const getAttendanceData = (id, name, Date, Type) => {
+        return new Promise((resolve, reject) => {
+          const query2 = `SELECT * FROM \`van_attendance_daily\` WHERE Id_No = '${id}' AND Date = '${Date}' AND ${Type} IN ('A')`;
+
+          getConnection((e2, conn) => {
+            if (e2) {
+              return reject({
+                success: false,
+                message: "Database connection error",
+              });
+            }
+
+            conn.query(query2, (e3, rows) => {
+              conn.release();
+
+              if (e3) {
+                return reject({ success: false, message: e3.message });
+              }
+
+              if (rows.length === 0) {
+                resolve({ Id_No: id, Name: name, Attendance: "P" });
+              } else {
+                resolve({ Id_No: id, Name: name, Attendance: rows[0][Type] });
+              }
+            });
+          });
+        });
+      };
+      const ids = rows.map((row) => [row.Id_No, row.First_Name]);
+      const promises = ids.map((id) =>
+        getAttendanceData(id[0], id[1], Date, Type)
+      );
+      Promise.all(promises)
+        .then((attendance) => {
+          res.json({ success: true, data: attendance });
+        })
+        .catch((error) => {
+          res.json(error); // This will send either the database error or connection error
+        });
+    });
+  });
+});
+
+app.post("/student/vanattendance/upload", async (req, res) => {
+  let { Route, Date, Type, Data } = req.body;
+
+  try {
+    getConnection(async (err, connection) => {
+      if (err) return res.json({ success: false, message: err.message });
+      // Fetch student IDs
+      const students = [];
+      new Promise((resolve, reject) => {
+        connection.query(
+          "SELECT Id_No FROM `student_master_data` WHERE Van_Route = ? AND (Stu_Class LIKE '%CLASS%' OR Stu_Class ='PreKG' OR Stu_Class ='LKG' OR Stu_Class ='UKG')",
+          [Route],
+          (err, rows) => {
+            if (rows.length === 0) {
+              return res.json({
+                success: false,
+                message: "No Student Found in this Route",
+              });
+            }
+            if (err) return res.json({ success: false, message: err.message });
+            rows.forEach((row) => {
+              students.push(row.Id_No);
+            });
+            resolve(students);
+          }
+        );
+      })
+        .then((all_students) => {
+          // Process each student
+          for (const student of Object.values(all_students)) {
+            let id = student;
+            connection.query(
+              "SELECT * FROM `van_attendance_daily` WHERE Id_No = ? AND Date = ?",
+              [id, Date],
+              (err, rows) => {
+                if (err)
+                  return res.json({ success: false, message: err.message });
+                if (rows.length === 0 && Object.keys(Data).includes(id)) {
+                  connection.query(
+                    "INSERT INTO `van_attendance_daily` (Id_No, Date, ??) VALUES (?, ?, ?)",
+                    [Type, id, Date, Data[id]]
+                  );
+                } else if (rows.length != 0) {
+                  if (Object.keys(Data).includes(id)) {
+                    connection.query(
+                      "UPDATE `van_attendance_daily` SET " +
+                        Type +
+                        " = '" +
+                        Data[id] +
+                        "' WHERE Id_No = '" +
+                        id +
+                        "' AND Date = '" +
+                        Date +
+                        "'"
+                    );
+                  } else {
+                    connection.query(
+                      "UPDATE `van_attendance_daily` SET " +
+                        Type +
+                        " = NULL WHERE Id_No = '" +
+                        id +
+                        "' AND Date = '" +
+                        Date +
+                        "'"
+                    );
+                  }
+                }
+              }
+            );
+          }
+        })
+        .then(() => {
+          // Send success response
+          res.json({
+            success: true,
+            message: "Attendance data processed successfully",
+          });
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    });
+  } catch (error) {
+    // Handle errors
+    res.json({ success: false, message: error.message });
+  }
+});
+
 app.post("/student/attendance/report", (req, res) => {
   let { Class, Section, Type, AbsentType, Date } = req.body;
   function getDetails(connection, id, type) {
@@ -493,7 +645,7 @@ app.post("/student/attendance/report", (req, res) => {
   }
   getConnection(async (err, connection) => {
     let query =
-      "SELECT First_Name AS Name,Id_No,Stu_Section AS Section,Mobile FROM `student_master_data` WHERE Stu_Class = ";
+      "SELECT First_Name AS Name,Id_No,Stu_Section AS Section,Mobile,Van_Route AS Route FROM `student_master_data` WHERE Stu_Class = ";
     if (!Class && !Section) {
       let att_promise = new Promise((resolve) => {
         let query =
@@ -594,6 +746,282 @@ app.post("/student/attendance/report", (req, res) => {
           });
       });
     }
+  });
+});
+
+app.post("/student/vanattendance/report", (req, res) => {
+  let { Route, Type, Date } = req.body;
+  function getDetails(connection, id) {
+    return new Promise((resolve, reject) => {
+      connection.query(
+        "SELECT First_Name AS Name,Stu_Class AS Class,Stu_Section AS Section,Mobile,Van_Route FROM student_master_data WHERE Id_No = '" +
+          id +
+          "'",
+        (err, results) => {
+          if (err) {
+            return resolve(err);
+          } else {
+            resolve({
+              Id_No: id,
+              Name: results[0].Name,
+              Class: results[0].Class,
+              Section: results[0].Section,
+              Mobile: results[0].Mobile,
+              Route: results[0].Van_Route,
+            });
+          }
+        }
+      );
+    });
+  }
+  function getAttendanceData(
+    connection,
+    id,
+    name,
+    cls,
+    section,
+    mobile,
+    route
+  ) {
+    return new Promise((resolve) => {
+      let query =
+        "SELECT * FROM `van_attendance_daily` WHERE Id_No = '" +
+        id +
+        "' AND Date = '" +
+        Date +
+        "' AND " +
+        Type +
+        " IN ('A')";
+      connection.query(query, (err, results) => {
+        if (err) {
+          return resolve(err);
+        }
+        if (results.length != 0) {
+          return resolve({
+            Id_No: id,
+            Name: name,
+            Class: cls,
+            Section: section,
+            Mobile: mobile,
+            Route: route,
+          });
+        } else {
+          return resolve(null);
+        }
+      });
+    });
+  }
+  getConnection(async (err, connection) => {
+    if (err) {
+      return res.json({
+        success: false,
+        message: "Error connecting to database",
+      });
+    }
+    if (!Route) {
+      let routes = [];
+      axios
+        .post("http://192.168.53.107:3000/getroutes")
+        .then((rows) => {
+          routes = rows.data.data;
+        })
+        .then(() => {
+          let att_promise = new Promise((resolve) => {
+            let query =
+              "SELECT * FROM `van_attendance_daily` WHERE Date = '" +
+              Date +
+              "' AND " +
+              Type +
+              " IN ('A')";
+            connection.query(query, (err, rows) => {
+              if (err) {
+                return resolve(err);
+              } else {
+                if (rows.length == 0) {
+                  resolve([]);
+                } else {
+                  resolve(rows.map((row) => row.Id_No));
+                }
+              }
+            });
+          });
+          Promise.resolve(att_promise).then((value) => {
+            if (value.length == 0) {
+              res.json({ success: true, data: [] });
+            } else {
+              let promises = [];
+              value.forEach((id) => {
+                promises.push(getDetails(connection, id));
+              });
+              Promise.all(promises).then((value) => {
+                let data = {};
+                value.map((student) => {
+                  if (!Object.keys(data).includes(student.Route)) {
+                    data[student.Route] = [];
+                  }
+                  data[student.Route].push(student);
+                });
+                res.json({ success: true, data: data });
+              });
+            }
+          });
+        });
+    } else {
+      let query =
+        "SELECT Id_No,First_Name AS Name,Stu_Class AS Class,Stu_Section AS Section,Mobile,Van_Route AS Route FROM `student_master_data` WHERE Van_Route = '" +
+        Route +
+        "' AND (Stu_Class LIKE '%CLASS%' OR Stu_Class ='PreKG' OR Stu_Class ='LKG' OR Stu_Class ='UKG')";
+      new Promise((resolve) => {
+        connection.query(query, (err, rows) => {
+          if (err) resolve(err);
+          else
+            resolve(
+              rows.map((row) => [
+                row.Id_No,
+                row.Name,
+                row.Class,
+                row.Section,
+                row.Mobile,
+                row.Route,
+              ])
+            );
+        });
+      }).then((ids) => {
+        let promises = [];
+        ids.forEach((student) => {
+          promises.push(
+            getAttendanceData(
+              connection,
+              student[0],
+              student[1],
+              student[2],
+              student[3],
+              student[4],
+              student[5]
+            )
+          );
+        });
+        Promise.all(promises)
+          .then((value) => {
+            let data = {};
+            value.map((student) => {
+              if (student) {
+                if (!Object.keys(data).includes(student.Route)) {
+                  data[student.Route] = [];
+                }
+                data[student.Route].push(student);
+              }
+            });
+            res.json({ success: true, data: data });
+          })
+          .catch((err) => {
+            res.json({ success: false, message: err });
+          });
+      });
+    }
+
+    /* let query =
+      "SELECT First_Name AS Name,Id_No,Stu_Section AS Section,Mobile,Van_Route AS Route FROM `student_master_data` WHERE Stu_Class = ";
+    if (!Class && !Section) {
+      let att_promise = new Promise((resolve) => {
+        let query =
+          "SELECT * FROM `attendance_daily` WHERE Date = '" +
+          Date +
+          "' AND " +
+          Type;
+        if (AbsentType == "Both") {
+          query += " IN ('A','L')";
+        } else {
+          query += " = '" + AbsentType + "'";
+        }
+        connection.query(query, (err, rows) => {
+          if (err) {
+            return resolve(err);
+          } else {
+            if (rows.length == 0) {
+              resolve([]);
+            } else {
+              resolve(rows.map((row) => [row.Id_No, row[Type]]));
+            }
+          }
+        });
+      });
+      Promise.resolve(att_promise).then((value) => {
+        if (value.length == 0) {
+          res.json({ success: true, data: [] });
+        } else {
+          let promises = [];
+          value.forEach((student) => {
+            promises.push(getDetails(connection, student[0], student[1]));
+          });
+          Promise.all(promises).then((value) => {
+            let data = {};
+            value.map((student) => {
+              if (
+                !Object.keys(data).includes(student.Class + student.Section)
+              ) {
+                data[student.Class + student.Section] = [];
+              }
+              data[student.Class + student.Section].push(student);
+            });
+            data = sortAttendance(data);
+            res.json({ success: true, data: data });
+          });
+        }
+      });
+    } else if (!Class && Section) {
+      return res.json({ success: false, message: "Section Only not Allowed" });
+    } else {
+      if (Class && !Section) {
+        query += "'" + Class + "'";
+      } else if (Class && Section) {
+        query += "'" + Class + "' AND Stu_Section = '" + Section + "'";
+      }
+      new Promise((resolve) => {
+        connection.query(query, (err, rows) => {
+          if (err) resolve(err);
+          else
+            resolve(
+              rows.map((row) => [row.Id_No, row.Name, row.Section, row.Mobile])
+            );
+        });
+      }).then((ids) => {
+        let promises = [];
+        ids.forEach((student) => {
+          promises.push(
+            getAttendanceData(
+              connection,
+              student[0],
+              student[1],
+              student[2],
+              student[3],
+              AbsentType
+            )
+          );
+        });
+        Promise.all(promises)
+          .then((value) => {
+            let data = {};
+            value.map((student) => {
+              if (student) {
+                if (!Object.keys(data).includes(student.Class)) {
+                  data[student.Class] = {};
+                }
+                if (
+                  !Object.keys(data[student.Class]).includes(student.Section)
+                ) {
+                  data[student.Class][student.Section] = [];
+                }
+                data[student.Class][student.Section].push(student);
+              }
+            });
+            res.json({ success: true, data: data });
+          })
+          .catch((err) => {
+            res.json({ success: false, message: err });
+          });
+      });
+    } */
   });
 });
 
@@ -1160,6 +1588,23 @@ app.post("/student/resetpassword", (req, res) => {
         });
       }
     );
+  });
+});
+
+app.post("/getroutes", (req, res) => {
+  getConnection((err, connection) => {
+    if (err) {
+      return res.json({ success: false, message: err });
+    }
+    connection.query("SELECT * FROM `van_route`", (er, rows) => {
+      if (er) {
+        return res.json({ success: false, message: er });
+      }
+      return res.json({
+        success: true,
+        data: rows.map((row) => row.Van_Route),
+      });
+    });
   });
 });
 
