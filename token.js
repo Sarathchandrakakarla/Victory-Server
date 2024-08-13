@@ -16,4 +16,5 @@ async function getToken() {
   console.log(token.access_token);
   return token.access_token;
 }
-getToken();
+module.exports = { getToken };
+//getToken();
