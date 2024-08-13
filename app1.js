@@ -970,7 +970,7 @@ app.post("/student/getexams", (req, res) => {
           });
         }
         axios
-          .post("http://18.61.98.208:3000/fetchexams", {
+          .post("http://192.168.53.107:3000/fetchexams", {
             Class: Class,
           })
           .then((val) => {
@@ -990,13 +990,14 @@ app.post("/student/marks", (req, res) => {
       return res.json({ success: false, message: err });
     }
     connection.query(
-      "SELECT First_Name AS Name,Stu_Class AS Class,Stu_Section AS Section FROM `student_master_data` WHERE Id_No = ?",
+      "SELECT Stu_Class AS Class FROM `student_master_data` WHERE Id_No = ?",
       [Id_No],
       (err, rows) => {
         if (err) {
           return res.json({ success: false, message: err });
         }
         let Class = rows[0]["Class"];
+        //Class = "1 CLASS";
         if (
           Class.toString().includes("Drop") ||
           Class.toString().includes("Others")
@@ -1035,12 +1036,7 @@ app.post("/student/marks", (req, res) => {
                   sub_max[subject.Subjects] = parseInt(subject.Max_Marks);
                   Max_Total += parseInt(subject.Max_Marks);
                 });
-                let marks = {
-                  Name: rows[0].Name,
-                  Class: Class + " " + rows[0].Section,
-                  Subjects: {},
-                };
-
+                let marks = { Subjects: {} };
                 connection.query(
                   "SELECT * FROM `stu_marks` WHERE Id_No = ? AND Exam = ?",
                   [Id_No, Exam],
@@ -1510,95 +1506,7 @@ app.post("/getroutes", (req, res) => {
   });
 });
 
-app.post("/notifications/fetchall", (req, res) => {
-  let { Topics } = req.body;
-  getConnection((err, connection) => {
-    if (err) {
-      return res.json({ success: false, message: err });
-    }
-    let promises = [];
-    Topics.forEach((Topic) => {
-      promises.push(
-        new Promise((resolve, reject) => {
-          connection.query(
-            "SELECT * FROM `notifications` WHERE Topic = ?",
-            [Topic],
-            (er, rows) => {
-              if (er) {
-                return resolve({ success: false, message: er });
-              }
-              if (rows.length == 0) {
-                return resolve(null);
-              }
-              return resolve(rows);
-            }
-          );
-        })
-      );
-    });
-    Promise.all(promises)
-      .then((results) => {
-        let data = [];
-        results.forEach((result) => {
-          if (result) {
-            result.forEach((notification) => {
-              data.push(notification);
-            });
-          }
-        });
-        return res.json({
-          success: true,
-          data: data,
-        });
-      })
-      .catch((er) => {
-        return res.json({ success: false, message: er });
-      });
-  });
-});
-
 app.post("/notifications/send", (req, res) => {
-  function getDate() {
-    var d = new Date();
-    var date = d.getDate();
-    var month = d.getMonth() + 1;
-    var year = d.getFullYear();
-    date = date < 10 ? "0" + date : date;
-    month = month < 10 ? "0" + month : month;
-    return date + "-" + month + "-" + year;
-  }
-  function InsertNotification() {
-    let date = getDate();
-    getConnection((err, connection) => {
-      if (err) {
-        return res.json({ success: false, message: err });
-      }
-      connection.query(
-        "SELECT Id FROM `notifications` ORDER BY Id DESC LIMIT 1",
-        (er, rows) => {
-          if (er) {
-            return res.json({ success: false, message: er });
-          }
-          let id;
-          if (rows.length == 0) {
-            id = 1;
-          } else {
-            id = rows[0].Id + 1;
-          }
-          connection.query(
-            "INSERT INTO `notifications` VALUES('',?,?,?,?)",
-            [id, Topic, Text, date],
-            (e, result) => {
-              if (e) {
-                return res.json({ success: false, message: e });
-              }
-              return true;
-            }
-          );
-        }
-      );
-    });
-  }
   let { Topic, Text } = req.body;
   if (Topic == "All Members") {
     Topic = "All";
@@ -1612,8 +1520,7 @@ app.post("/notifications/send", (req, res) => {
       },
     },
   };
-  InsertNotification();
-  /* let Token = "";
+  let Token = "";
   TokenFile.getToken()
     .then((token) => {
       Token = token;
@@ -1632,17 +1539,17 @@ app.post("/notifications/send", (req, res) => {
       )
         .then((r) => {
           if (r.ok) {
-            InsertNotification();
             return res.json({
               success: true,
               message: "Notifications Sent Successfully",
             });
           }
+          console.log(r);
         })
         .catch((err) => {
           res.json({ success: false, message: err });
         });
-    }); */
+    });
   /* admin
     .messaging()
     .send(message)
@@ -1652,25 +1559,6 @@ app.post("/notifications/send", (req, res) => {
     .catch((error) => {
       res.json({ success: false, message: error });
     }); */
-});
-
-app.post("/notifications/delete", (req, res) => {
-  let { Id } = req.body;
-  getConnection((err, connection) => {
-    if (err) {
-      return res.json({ success: false, message: err });
-    }
-    let query = 'DELETE FROM notifications WHERE Id = "' + Id + '"';
-    connection.query(query, (err, results) => {
-      if (err) {
-        return res.json({ success: false, message: err });
-      }
-      return res.json({
-        success: true,
-        message: "Notification Deleted Successfully",
-      });
-    });
-  });
 });
 
 app.listen(PORT, "0.0.0.0", (error) => {
