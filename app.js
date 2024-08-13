@@ -821,7 +821,7 @@ app.post("/student/vanattendance/report", (req, res) => {
     if (!Route) {
       let routes = [];
       axios
-        .post("http://192.168.53.107:3000/getroutes")
+        .post("http://18.61.98.208:3000/getroutes")
         .then((rows) => {
           routes = rows.data.data;
         })
@@ -919,109 +919,6 @@ app.post("/student/vanattendance/report", (req, res) => {
           });
       });
     }
-
-    /* let query =
-      "SELECT First_Name AS Name,Id_No,Stu_Section AS Section,Mobile,Van_Route AS Route FROM `student_master_data` WHERE Stu_Class = ";
-    if (!Class && !Section) {
-      let att_promise = new Promise((resolve) => {
-        let query =
-          "SELECT * FROM `attendance_daily` WHERE Date = '" +
-          Date +
-          "' AND " +
-          Type;
-        if (AbsentType == "Both") {
-          query += " IN ('A','L')";
-        } else {
-          query += " = '" + AbsentType + "'";
-        }
-        connection.query(query, (err, rows) => {
-          if (err) {
-            return resolve(err);
-          } else {
-            if (rows.length == 0) {
-              resolve([]);
-            } else {
-              resolve(rows.map((row) => [row.Id_No, row[Type]]));
-            }
-          }
-        });
-      });
-      Promise.resolve(att_promise).then((value) => {
-        if (value.length == 0) {
-          res.json({ success: true, data: [] });
-        } else {
-          let promises = [];
-          value.forEach((student) => {
-            promises.push(getDetails(connection, student[0], student[1]));
-          });
-          Promise.all(promises).then((value) => {
-            let data = {};
-            value.map((student) => {
-              if (
-                !Object.keys(data).includes(student.Class + student.Section)
-              ) {
-                data[student.Class + student.Section] = [];
-              }
-              data[student.Class + student.Section].push(student);
-            });
-            data = sortAttendance(data);
-            res.json({ success: true, data: data });
-          });
-        }
-      });
-    } else if (!Class && Section) {
-      return res.json({ success: false, message: "Section Only not Allowed" });
-    } else {
-      if (Class && !Section) {
-        query += "'" + Class + "'";
-      } else if (Class && Section) {
-        query += "'" + Class + "' AND Stu_Section = '" + Section + "'";
-      }
-      new Promise((resolve) => {
-        connection.query(query, (err, rows) => {
-          if (err) resolve(err);
-          else
-            resolve(
-              rows.map((row) => [row.Id_No, row.Name, row.Section, row.Mobile])
-            );
-        });
-      }).then((ids) => {
-        let promises = [];
-        ids.forEach((student) => {
-          promises.push(
-            getAttendanceData(
-              connection,
-              student[0],
-              student[1],
-              student[2],
-              student[3],
-              AbsentType
-            )
-          );
-        });
-        Promise.all(promises)
-          .then((value) => {
-            let data = {};
-            value.map((student) => {
-              if (student) {
-                if (!Object.keys(data).includes(student.Class)) {
-                  data[student.Class] = {};
-                }
-                if (
-                  !Object.keys(data[student.Class]).includes(student.Section)
-                ) {
-                  data[student.Class][student.Section] = [];
-                }
-                data[student.Class][student.Section].push(student);
-              }
-            });
-            res.json({ success: true, data: data });
-          })
-          .catch((err) => {
-            res.json({ success: false, message: err });
-          });
-      });
-    } */
   });
 });
 
