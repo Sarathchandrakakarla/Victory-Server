@@ -1599,7 +1599,7 @@ app.post("/notifications/send", (req, res) => {
       );
     });
   }
-  let { Topic, Text } = req.body;
+  let { Topic, Text, Temporary } = req.body;
   if (Topic == "All Members") {
     Topic = "All";
   }
@@ -1612,8 +1612,8 @@ app.post("/notifications/send", (req, res) => {
       },
     },
   };
-  InsertNotification();
-  /* let Token = "";
+  if (!Temporary) InsertNotification();
+  let Token = "";
   TokenFile.getToken()
     .then((token) => {
       Token = token;
@@ -1642,7 +1642,7 @@ app.post("/notifications/send", (req, res) => {
         .catch((err) => {
           res.json({ success: false, message: err });
         });
-    }); */
+    });
   /* admin
     .messaging()
     .send(message)
