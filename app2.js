@@ -2,20 +2,20 @@ const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql"); // Use mysql2 for better performance and features
 const bcrypt = require("bcrypt"); // Use bcrypt directly
+/* const admin = require("firebase-admin");
+const adminapp = require("firebase-admin/app"); */
 const axios = require("axios");
 const app = express();
 const PORT = 3000;
 const TokenFile = require("./token");
-const fs = require("fs");
-const { createLogger, format, transports } = require("winston");
-const { combine, prettyPrint } = format;
-const logger = createLogger({
-  /* format: combine(prettyPrint()), */
-  transports: [new transports.File({ filename: "activity.log" })],
-});
+/* var serviceAccount = require("./victoryapp-1-firebase-adminsdk-g8vmj-6190eb8890.json");
+let fbapp = admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+}); */
 // Middleware
 app.use(cors());
 app.use(express.json());
+
 // Create a MySQL connection pool
 const pool = mysql.createPool({
   host: "68.178.145.230",
@@ -40,26 +40,6 @@ const getConnection = (callback) => {
 // Routes
 app.get("/", (req, res) => {
   res.send("Welcome Sarath");
-});
-
-app.post("/logout", (req, res) => {
-  try {
-    const { Username, UserType } = req.body;
-    logger.info({
-      label: "Authentication",
-      message: {
-        user: UserType,
-        username: Username,
-        task: "logged out",
-      },
-      timestamp: new Date().toLocaleString(undefined, {
-        timeZone: "Asia/Kolkata",
-      }),
-    });
-    res.json({ success: true });
-  } catch (err) {
-    console.log(err);
-  }
 });
 
 app.post("/admin_login", (req, res) => {
@@ -97,17 +77,6 @@ app.post("/admin_login", (req, res) => {
                   message: "Incorrect Password",
                 });
               }
-              logger.info({
-                label: "Authentication",
-                message: {
-                  user: "Admin",
-                  username: Username,
-                  task: "logged in",
-                },
-                timestamp: new Date().toLocaleString(undefined, {
-                  timeZone: "Asia/Kolkata",
-                }),
-              });
               res.json({
                 success: true,
                 data: { Name: rows[0].Admin_Name },
@@ -1801,6 +1770,15 @@ app.post("/notifications/send", (req, res) => {
             res.json({ success: false, message: err });
           });
       });
+    /* admin
+    .messaging()
+    .send(message)
+    .then((response) => {
+      res.json({ success: true, message: "Notifications Sent Successfully" });
+    })
+    .catch((error) => {
+      res.json({ success: false, message: error });
+    }); */
   } catch (err) {
     console.log(err);
   }
