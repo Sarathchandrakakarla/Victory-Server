@@ -120,7 +120,13 @@ app.post("/admin_login", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/admin_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -183,7 +189,13 @@ app.post("/faculty_login", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/faculty_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -246,7 +258,13 @@ app.post("/student_login", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
