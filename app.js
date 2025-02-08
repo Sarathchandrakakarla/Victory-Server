@@ -62,6 +62,46 @@ app.post("/logout", (req, res) => {
   }
 });
 
+app.post("/video_gallery", (req, res) => {
+  try {
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      connection.query("SELECT * FROM youtube", (err, rows) => {
+        connection.release(); // Release the connection back to the pool
+
+        if (err) {
+          return res.json({ success: false, message: err.message });
+        }
+        function parseDate(dateString) {
+          const [datePart, timePart] = dateString.split(" ");
+          const [day, month, year] = datePart.split("-");
+          const [hours, minutes, seconds] = timePart.split(":");
+          return new Date(year, month - 1, day, hours, minutes, seconds); // months are 0-indexed
+        }
+
+        rows.sort((a, b) => {
+          const dateA = parseDate(a.Published_Date);
+          const dateB = parseDate(b.Published_Date);
+          return dateB - dateA; // Sort from latest to oldest
+        });
+        res.json(rows);
+      });
+    });
+  } catch (err) {
+    logger.error({
+      label: "/video_gallery",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 app.post("/admin_login", (req, res) => {
   try {
     let { Username, Password } = req.body;
@@ -1164,6 +1204,41 @@ app.post("/fetchexams", (req, res) => {
   }
 });
 
+app.post("/fetchsubjects", (req, res) => {
+  try {
+    const { Class } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      connection.query(
+        "SELECT DISTINCT Subjects FROM `class_wise_subjects` WHERE Class = ?",
+        [Class],
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          if (rows.length == 0) {
+            return res.json({ success: true, data: ["No Subjects Found"] });
+          }
+          return res.json({
+            success: true,
+            data: rows.map((row) => row.Subjects),
+          });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/fetchsubjects",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 app.post("/student/getexams", (req, res) => {
   try {
     const { Id_No } = req.body;
@@ -1356,6 +1431,59 @@ app.post("/student/marks", (req, res) => {
   } catch (err) {
     logger.error({
       label: "/student/marks",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/student/gethomeworks", (req, res) => {
+  try {
+    const { Id_No, Date } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      connection.query(
+        "SELECT Stu_Class AS Class,Stu_Section AS Section FROM `student_master_data` WHERE Id_No = ?",
+        [Id_No],
+        (error, rows) => {
+          if (error) {
+            console.log(err);
+            return res.json({ success: false, message: err });
+          }
+          axios
+            .post("http://18.61.98.208:3000/gethomeworks", {
+              Class: rows[0].Class,
+              Section: rows[0].Section,
+              Date: Date,
+            })
+            .then((val) => {
+              let final_data = [];
+              if (!val.data.success) {
+                return res.json({ success: false, message: val.data.message });
+              }
+              val.data.data.forEach((subject) => {
+                if (subject["data"][0] && subject["data"][1]) {
+                  final_data.push({
+                    subject: subject["subject"],
+                    path: `https://victoryschools.in/Victory/Files/Homework/${rows[0].Class} ${rows[0].Section}/${Date}/${subject["subject"]}.pdf`,
+                  });
+                }
+              });
+              return res.json({
+                success: true,
+                data: final_data,
+              });
+            });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/student/gethomeworks",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
@@ -1621,6 +1749,179 @@ app.post("/classwisemarks", (req, res) => {
   } catch (err) {
     logger.error({
       label: "/classwisemarks",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/gethomeworks", (req, res) => {
+  try {
+    const { Class, Section, Date } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      axios
+        .post("http://18.61.98.208:3000/fetchsubjects", { Class: Class })
+        .then((val) => {
+          if (!val.data.success) {
+            return res.json({ success: false, message: val.data.message });
+          }
+          const subjects = val.data.data;
+          if (subjects.length === 0) {
+            return res.json({ success: false, message: "No Subjects Found" });
+          }
+
+          // Convert each subject into a promise for the database query
+          const promises = subjects.map((subject) => {
+            return new Promise((resolve, reject) => {
+              connection.query(
+                "SELECT * FROM `homework` WHERE Class = ? AND Section = ? AND Date = ? AND Subject = ?",
+                [Class, Section, Date, subject],
+                (err, rows) => {
+                  if (err) {
+                    reject(err);
+                  } else if (rows.length === 0) {
+                    resolve({ subject, data: [null, null] }); // No data found for subject
+                  } else {
+                    resolve({
+                      subject,
+                      data: [rows[0].Image, rows[0].Text],
+                    });
+                  }
+                }
+              );
+            });
+          });
+
+          // Run all queries in parallel
+          return Promise.all(promises);
+        })
+        .then((results) => {
+          return res.json({ success: true, data: results });
+        })
+        .catch((err) => {
+          return res.json({ success: false, message: err.message || err });
+        });
+    });
+  } catch (err) {
+    logger.error({
+      label: "/gethomeworks",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/homework/updatedatabase", (req, res) => {
+  try {
+    const { Class, Section, Date, Subject, imgCount, Text, New } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      let img_text = "";
+      if (imgCount == 0) {
+        img_text = null;
+      } else {
+        for (let i = 1; i <= imgCount; i++) {
+          img_text +=
+            "../../Files/Homework/" +
+            Class +
+            " " +
+            Section +
+            "/" +
+            Date +
+            "/" +
+            Subject +
+            i +
+            ".jpg"; //Date;
+          if (i != imgCount) {
+            img_text += ",";
+          }
+        }
+      }
+      if (New) {
+        connection.query(
+          "INSERT INTO `homework`(Class,Section,Date,Subject,Text,Image) VALUES(?,?,?,?,?,?)",
+          [Class, Section, Date, Subject, Text != "" ? Text : null, img_text],
+          (t, status) => {
+            connection.release();
+            if (status["affectedRows"] != 0)
+              return res.json({
+                success: true,
+                message: "Database Updated Successfully",
+              });
+            return res.json({
+              success: false,
+              message: "Database Updation Failed",
+            });
+          }
+        );
+      } else {
+        connection.query(
+          "UPDATE `homework` SET Image = ?,Text = ? WHERE Class = ? AND Section = ? AND Date = ? AND Subject = ?",
+          [img_text, Text != "" ? Text : null, Class, Section, Date, Subject],
+          (t, status) => {
+            connection.release();
+            if (status["affectedRows"] != 0)
+              return res.json({
+                success: true,
+                message: "Database Updated Successfully",
+              });
+            return res.json({
+              success: false,
+              message: "Database Updation Failed",
+            });
+          }
+        );
+      }
+    });
+  } catch (err) {
+    logger.error({
+      label: "/homework/updatedatabase",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/deletehomework", (req, res) => {
+  try {
+    const { Class, Section, Date, Subject } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+
+      connection.query(
+        "DELETE FROM `homework` WHERE Class = ? AND Section = ? AND Date = ? AND Subject = ?",
+        [Class, Section, Date, Subject],
+        (t, val) => {
+          if (val["affectedRows"] != 0) {
+            res.json({
+              success: true,
+              message: "Homework Deleted Successfully",
+            });
+          } else {
+            res.json({
+              success: false,
+              message: "Homework Deletion Failed",
+            });
+          }
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/deletehomework",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
@@ -1941,7 +2242,6 @@ app.post("/notifications/send", (req, res) => {
         )
           .then((r) => {
             if (r.ok) {
-              InsertNotification();
               return res.json({
                 success: true,
                 message: "Notifications Sent Successfully",

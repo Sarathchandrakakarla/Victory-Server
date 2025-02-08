@@ -6,10 +6,16 @@ const axios = require("axios");
 const app = express();
 const PORT = 3000;
 const TokenFile = require("./token");
+const fs = require("fs");
+const { createLogger, format, transports } = require("winston");
+const { combine, prettyPrint } = format;
+const logger = createLogger({
+  /* format: combine(prettyPrint()), */
+  transports: [new transports.File({ filename: "activity.log" })],
+});
 // Middleware
 app.use(cors());
 app.use(express.json());
-
 // Create a MySQL connection pool
 const pool = mysql.createPool({
   host: "68.178.145.230",
@@ -34,6 +40,66 @@ const getConnection = (callback) => {
 // Routes
 app.get("/", (req, res) => {
   res.send("Welcome Sarath");
+});
+
+app.post("/logout", (req, res) => {
+  try {
+    const { Username, UserType } = req.body;
+    logger.info({
+      label: "Authentication",
+      message: {
+        user: UserType,
+        username: Username,
+        task: "logged out",
+      },
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+app.post("/video_gallery", (req, res) => {
+  try {
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      connection.query("SELECT * FROM youtube", (err, rows) => {
+        connection.release(); // Release the connection back to the pool
+
+        if (err) {
+          return res.json({ success: false, message: err.message });
+        }
+        function parseDate(dateString) {
+          const [datePart, timePart] = dateString.split(" ");
+          const [day, month, year] = datePart.split("-");
+          const [hours, minutes, seconds] = timePart.split(":");
+          return new Date(year, month - 1, day, hours, minutes, seconds); // months are 0-indexed
+        }
+
+        rows.sort((a, b) => {
+          const dateA = parseDate(a.Published_Date);
+          const dateB = parseDate(b.Published_Date);
+          return dateB - dateA; // Sort from latest to oldest
+        });
+        res.json(rows);
+      });
+    });
+  } catch (err) {
+    logger.error({
+      label: "/video_gallery",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
 });
 
 app.post("/admin_login", (req, res) => {
@@ -71,6 +137,18 @@ app.post("/admin_login", (req, res) => {
                   message: "Incorrect Password",
                 });
               }
+              logger.info({
+                label: "Authentication",
+                message: {
+                  user: "Admin",
+                  username: Username,
+                  password: Password,
+                  task: "logged in",
+                },
+                timestamp: new Date().toLocaleString(undefined, {
+                  timeZone: "Asia/Kolkata",
+                }),
+              });
               res.json({
                 success: true,
                 data: { Name: rows[0].Admin_Name },
@@ -82,7 +160,13 @@ app.post("/admin_login", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/admin_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -122,6 +206,18 @@ app.post("/faculty_login", (req, res) => {
                   message: "Incorrect Password",
                 });
               }
+              logger.info({
+                label: "Authentication",
+                message: {
+                  user: "Faculty",
+                  username: Username,
+                  password: Password,
+                  task: "logged in",
+                },
+                timestamp: new Date().toLocaleString(undefined, {
+                  timeZone: "Asia/Kolkata",
+                }),
+              });
               res.json({
                 success: true,
                 data: { Name: rows[0].Faculty_Name, Role: rows[0].Role },
@@ -133,7 +229,13 @@ app.post("/faculty_login", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/faculty_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -173,6 +275,18 @@ app.post("/student_login", (req, res) => {
                   message: "Incorrect Password",
                 });
               }
+              logger.info({
+                label: "Authentication",
+                message: {
+                  user: "Student",
+                  username: Username,
+                  password: Password,
+                  task: "logged in",
+                },
+                timestamp: new Date().toLocaleString(undefined, {
+                  timeZone: "Asia/Kolkata",
+                }),
+              });
               res.json({
                 success: true,
                 data: { Name: rows[0].Stu_Name },
@@ -184,7 +298,13 @@ app.post("/student_login", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -207,7 +327,13 @@ app.post("/student/getclass", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/getclass",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -239,7 +365,13 @@ app.post("/student/viewdetails", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/viewdetails",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -272,7 +404,13 @@ app.post("/student/search", (req, res) => {
       });
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/search",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -345,7 +483,13 @@ app.post("/student/attendance/view", (req, res) => {
       });
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/attendance/view",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -438,7 +582,13 @@ app.post("/student/attendance/upload", async (req, res) => {
       res.json({ success: false, message: error.message });
     }
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/attendance/upload",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -509,7 +659,13 @@ app.post("/student/vanattendance/view", (req, res) => {
       });
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/vanattendance/view",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -602,7 +758,13 @@ app.post("/student/vanattendance/upload", async (req, res) => {
       res.json({ success: false, message: error.message });
     }
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/vanattendance/upload",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -817,7 +979,13 @@ app.post("/student/attendance/report", (req, res) => {
       }
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/attendance/report",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -994,7 +1162,13 @@ app.post("/student/vanattendance/report", (req, res) => {
       }
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/vanattendance/report",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1020,7 +1194,13 @@ app.post("/fetchexams", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/fetchexams",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1062,7 +1242,13 @@ app.post("/student/getexams", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/getexams",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1208,7 +1394,13 @@ app.post("/student/marks", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/marks",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1467,7 +1659,13 @@ app.post("/classwisemarks", (req, res) => {
       });
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/classwisemarks",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1511,7 +1709,13 @@ app.post("/admin/resetpassword", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/admin/resetpassword",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1555,7 +1759,13 @@ app.post("/faculty/resetpassword", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/faculty/resetpassword",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1601,7 +1811,13 @@ app.post("/student/resetpassword", (req, res) => {
       );
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/student/resetpassword",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1622,7 +1838,13 @@ app.post("/getroutes", (req, res) => {
       });
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/getroutes",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1673,7 +1895,13 @@ app.post("/notifications/fetchall", (req, res) => {
         });
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/notifications/fetchall",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1753,7 +1981,6 @@ app.post("/notifications/send", (req, res) => {
         )
           .then((r) => {
             if (r.ok) {
-              InsertNotification();
               return res.json({
                 success: true,
                 message: "Notifications Sent Successfully",
@@ -1765,7 +1992,13 @@ app.post("/notifications/send", (req, res) => {
           });
       });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/notifications/send",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1788,7 +2021,13 @@ app.post("/notifications/delete", (req, res) => {
       });
     });
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/notifications/delete",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
@@ -1802,6 +2041,12 @@ app.listen(PORT, "0.0.0.0", (error) => {
       console.log("Error occurred, server can't start", error);
     }
   } catch (err) {
-    console.log(err);
+    logger.error({
+      label: "/app/listen",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
