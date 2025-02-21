@@ -339,7 +339,7 @@ app.post("/student/getclass", (req, res) => {
 
 app.post("/student/viewdetails", (req, res) => {
   try {
-    let { Id_No } = req.body;
+    let { Id_No, Sibling_Status } = req.body;
 
     getConnection((err, connection) => {
       if (err)
@@ -360,7 +360,76 @@ app.post("/student/viewdetails", (req, res) => {
           if (rows.length === 0) {
             return res.json({ success: false, message: "Student Not Found" });
           }
-          res.json({ success: true, data: Object.entries(rows[0]) });
+          if (!Sibling_Status) {
+            return res.json({ success: true, data: Object.entries(rows[0]) });
+          }
+          var siblings = rows[0]["Siblings"];
+          if (siblings == "") {
+            rows[0]["Siblings"] = [];
+            return res.json({ success: true, data: Object.entries(rows[0]) });
+          } else {
+            if (siblings.includes(",")) {
+              function getSiblingsDetails(Sibling_Id_No) {
+                return new Promise((resolve, reject) => {
+                  axios
+                    .post("http://18.61.98.208:3000/student/viewdetails", {
+                      Id_No: Sibling_Id_No,
+                    })
+                    .then((sibling_details) => {
+                      let siblings_data = sibling_details.data.data;
+                      resolve({
+                        Id_No: siblings_data[1][1],
+                        Name: siblings_data[3][1],
+                        Class: `${siblings_data[11][1]} ${siblings_data[12][1]}`, //Class Section
+                      });
+                    })
+                    .catch((err) => {
+                      reject(err);
+                    });
+                });
+              }
+              let sibling_promises = [];
+              siblings.split(",").forEach((sibling) => {
+                sibling_promises.push(getSiblingsDetails(sibling));
+              });
+              Promise.all(sibling_promises)
+                .then((val) => {
+                  rows[0]["Siblings"] = val;
+                })
+                .then(() => {
+                  return res.json({
+                    success: true,
+                    data: Object.entries(rows[0]),
+                  });
+                })
+                .catch((err) => {
+                  console.log(err);
+                });
+            } else {
+              axios
+                .post("http://18.61.98.208:3000/student/viewdetails", {
+                  Id_No: siblings,
+                  Sibling_Status: false,
+                })
+                .then((sibling_details) => {
+                  let siblings_data = sibling_details.data.data;
+                  return {
+                    Id_No: siblings_data[1][1],
+                    Name: siblings_data[3][1],
+                    Class: `${siblings_data[11][1]} ${siblings_data[12][1]}`, //Class Section
+                  };
+                })
+                .then((val) => {
+                  rows[0]["Siblings"] = [val];
+                })
+                .then(() => {
+                  return res.json({
+                    success: true,
+                    data: Object.entries(rows[0]),
+                  });
+                });
+            }
+          }
         }
       );
     });
