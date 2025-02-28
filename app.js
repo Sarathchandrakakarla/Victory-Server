@@ -2361,6 +2361,103 @@ app.post("/notifications/delete", (req, res) => {
   }
 });
 
+app.get("/getactivity", async (req, res) => {
+  function parseLogFile() {
+    return new Promise((resolve, reject) => {
+      fs.readFile("activity.log", "utf-8", (err, data) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // Split the file content by lines or however your logs are structured
+        const logs = data
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .map((line) => {
+            try {
+              return JSON.parse(line);
+            } catch (e) {
+              console.error("Error parsing JSON:", e);
+              return null;
+            }
+          })
+          .filter((log) => log !== null);
+
+        resolve(logs);
+      });
+    });
+  }
+
+  try {
+    // Parse the log file
+    const logs = await parseLogFile();
+    // Apply filters based on query parameters, e.g.:
+    const { label, level, task, user, username, start, end } = req.query;
+
+    // Filter logs based on query parameters
+    let filteredLogs = logs;
+
+    if (label) {
+      filteredLogs = filteredLogs.filter(
+        (log) => log.label && log.label.toLowerCase() === label.toLowerCase()
+      );
+    }
+
+    if (level) {
+      filteredLogs = filteredLogs.filter(
+        (log) => log.level && log.level.toLowerCase() === level.toLowerCase()
+      );
+    }
+
+    if (task) {
+      filteredLogs = filteredLogs.filter(
+        (log) =>
+          log.message &&
+          log.message.task &&
+          log.message.task.toLowerCase() === task.toLowerCase()
+      );
+    }
+
+    if (user) {
+      filteredLogs = filteredLogs.filter(
+        (log) =>
+          log.message &&
+          log.message.user &&
+          log.message.user.toLowerCase() === user.toLowerCase()
+      );
+    }
+
+    if (username) {
+      filteredLogs = filteredLogs.filter(
+        (log) =>
+          log.message &&
+          log.message.username &&
+          log.message.username.toLowerCase() === username.toLowerCase()
+      );
+    }
+
+    if (start) {
+      // Filter logs based on timestamp (start date)
+      filteredLogs = filteredLogs.filter(
+        (log) => new Date(log.timestamp) >= new Date(start)
+      );
+    }
+
+    if (end) {
+      // Filter logs based on timestamp (end date)
+      filteredLogs = filteredLogs.filter(
+        (log) => new Date(log.timestamp) <= new Date(end)
+      );
+    }
+
+    // Send the filtered logs as JSON response
+    res.json(filteredLogs);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to read or parse the log file." });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", (error) => {
   try {
     if (!error) {
