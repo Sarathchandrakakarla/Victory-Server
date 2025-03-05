@@ -23,6 +23,8 @@ const pool = mysql.createPool({
   password: "Kscr2004",
   database: "vtest1",
   connectionLimit: 10, // Adjust the connection limit as needed
+  /* waitForConnections: true,
+  connectTimeout: 30000, */
 });
 
 // Utility function to get a connection from the pool
@@ -1991,6 +1993,337 @@ app.post("/deletehomework", (req, res) => {
   } catch (err) {
     logger.error({
       label: "/deletehomework",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/faculty/viewdetails", (req, res) => {
+  try {
+    let { Id_No } = req.body;
+
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+
+      connection.query(
+        "SELECT * FROM employee_master_data WHERE Emp_Id = ?",
+        [Id_No],
+        (err, rows) => {
+          connection.release(); // Release the connection back to the pool
+
+          if (err) {
+            return res.json({ success: false, message: err.message });
+          }
+          if (rows.length === 0) {
+            return res.json({ success: false, message: "Employee Not Found" });
+          }
+          return res.json({ success: true, data: Object.entries(rows[0]) });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/faculty/viewdetails",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/faculty/attendance/view", (req, res) => {
+  try {
+    let { Id_No, Date } = req.body;
+
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+
+      connection.query(
+        "SELECT * FROM `employee_attendance` WHERE Id_No = ? AND Date = ?",
+        [Id_No, Date],
+        (err, rows) => {
+          connection.release(); // Release the connection back to the pool
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          return res.json({ success: true, data: rows });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/faculty/attendance/view",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/faculty/attendance/upload", (req, res) => {
+  try {
+    let { Id_No, Date, Meridiem, Status, Time } = req.body;
+
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      connection.query(
+        "SELECT * FROM `employee_attendance` WHERE Id_No = ? AND Date = ?",
+        [Id_No, Date],
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          if (rows.length == 0) {
+            connection.query(
+              "INSERT INTO `employee_attendance`(Id_No,Date,??,??) VALUES(?,?,?,?)",
+              [
+                Meridiem.toUpperCase(),
+                Meridiem.toUpperCase() + "_Punch_Time",
+                Id_No,
+                Date,
+                Status,
+                Time,
+              ],
+              (val, val2) => {
+                connection.release(); // Release the connection back to the pool
+                if (val2["affectedRows"] != 0) {
+                  return res.json({
+                    success: true,
+                    message: "Attendance Updated Successfully",
+                  });
+                } else {
+                  return res.json({
+                    success: false,
+                    message: "Attendance Updation Failed",
+                  });
+                }
+              }
+            );
+          } else {
+            connection.query(
+              "UPDATE `employee_attendance` SET ?? = ?,?? = ? WHERE Id_No = ? AND Date = ?",
+              [
+                Meridiem.toUpperCase(),
+                Status,
+                Meridiem.toUpperCase() + "_Punch_Time",
+                Time,
+                Id_No,
+                Date,
+              ],
+              (val, val2) => {
+                connection.release(); // Release the connection back to the pool
+                if (val2["affectedRows"] != 0) {
+                  return res.json({
+                    success: true,
+                    message: "Attendance Updated Successfully",
+                  });
+                } else {
+                  return res.json({
+                    success: false,
+                    message: "Attendance Updation Failed",
+                  });
+                }
+              }
+            );
+          }
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/faculty/attendance/upload",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/getfacultyattendance", (req, res) => {
+  try {
+    let { Date } = req.body;
+
+    getConnection(async (err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      connection.query(
+        "SELECT emd.Emp_Id,emd.Emp_First_Name,COALESCE(ea.AM, 'Not Punched') AS AM_Status,COALESCE(ea.PM, 'Not Punched') AS PM_Status,COALESCE(ea.AM_Punch_Time,'') AS AM_Punch_Time, COALESCE(ea.PM_Punch_Time,'') AS PM_Punch_Time FROM employee_master_data emd LEFT JOIN employee_attendance ea ON emd.Emp_Id = ea.Id_No AND ea.Date = ? ORDER BY emd.Emp_Id",
+        [Date],
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          let filtered_rows = { AM: {}, PM: {}, Today: {} };
+          filtered_rows["AM"]["Present"] = rows.filter(
+            (emp) => emp.AM_Status == "P"
+          );
+
+          filtered_rows["AM"]["Absent"] = rows.filter(
+            (emp) => emp.AM_Status == "A"
+          );
+
+          filtered_rows["AM"]["Leave"] = rows.filter(
+            (emp) => emp.AM_Status == "L"
+          );
+
+          filtered_rows["AM"]["Not Punched"] = rows.filter(
+            (emp) => emp.AM_Status == "Not Punched"
+          );
+
+          filtered_rows["PM"]["Absent"] = rows.filter(
+            (emp) => emp.PM_Status == "A"
+          );
+
+          filtered_rows["PM"]["Present"] = rows.filter(
+            (emp) => emp.PM_Status == "P"
+          );
+
+          filtered_rows["PM"]["Leave"] = rows.filter(
+            (emp) => emp.PM_Status == "L"
+          );
+
+          filtered_rows["PM"]["Not Punched"] = rows.filter(
+            (emp) => emp.PM_Status == "Not Punched"
+          );
+
+          // Categorize based on the given conditions
+
+          filtered_rows["Today"]["Present"] = rows.filter((emp) => {
+            return (
+              (emp.AM_Status === "P" || emp.PM_Status === "P") && // Present in AM or PM
+              emp.AM_Status !== "L" && // Not Leave in AM
+              emp.PM_Status !== "L" // Not Leave in PM
+            );
+          });
+
+          filtered_rows["Today"]["Absent"] = rows.filter((emp) => {
+            return (
+              // Absent should only be categorized as Absent if neither is present or on leave
+              (emp.AM_Status === "A" || emp.PM_Status === "A") &&
+              !(emp.AM_Status === "P" || emp.PM_Status === "P") && // Not Present
+              !(emp.AM_Status === "L" || emp.PM_Status === "L") // Not Leave
+            );
+          });
+
+          filtered_rows["Today"]["Leave"] = rows.filter((emp) => {
+            return (
+              // Leave is categorized if either AM or PM is Leave, but the other shouldn't be Present
+              (emp.AM_Status === "L" || emp.PM_Status === "L") &&
+              !(emp.AM_Status === "P" || emp.PM_Status === "P") // Not Present in either AM or PM
+            );
+          });
+
+          filtered_rows["Today"]["Not Punched"] = rows.filter((emp) => {
+            return (
+              emp.AM_Status === "Not Punched" && emp.PM_Status === "Not Punched"
+            ); // Both AM and PM are Not Punched
+          });
+
+          return res.json({
+            success: true,
+            data: rows,
+            filtered_data: filtered_rows,
+          });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/getfacultyattendance",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/getstudentattendance", (req, res) => {
+  try {
+    let { Date } = req.body;
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      connection.query(
+        "SELECT smd.Id_No,smd.First_Name,smd.Stu_Class AS Class,smd.Stu_Section AS Section,COALESCE( CASE WHEN ad.AM = 'A' THEN 'Absent' WHEN ad.AM = 'L' THEN 'Leave' ELSE 'Present' END, 'Present' ) AS AM_Status, COALESCE( CASE WHEN ad.PM = 'A' THEN 'Absent' WHEN ad.PM = 'L' THEN 'Leave' ELSE 'Present' END, 'Present' ) AS PM_Status FROM student_master_data smd LEFT JOIN attendance_daily ad ON smd.Id_No = ad.Id_No AND ad.Date = ? WHERE smd.Stu_Class IN ('PreKG','LKG','UKG','1 CLASS','2 CLASS','3 CLASS','4 CLASS','5 CLASS','6 CLASS','7 CLASS','8 CLASS','9 CLASS','10 CLASS') ORDER BY FIELD(smd.Stu_Class, 'PreKG', 'LKG', 'UKG', '1 CLASS', '2 CLASS', '3 CLASS', '4 CLASS', '5 CLASS', '6 CLASS', '7 CLASS', '8 CLASS', '9 CLASS', '10 CLASS'),FIELD(smd.Stu_Section, 'A', 'B', 'C', 'D');",
+        [Date],
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          let filtered_rows = { AM: {}, PM: {}, Today: {} };
+          filtered_rows["AM"]["Present"] = rows.filter(
+            (student) => student.AM_Status == "Present"
+          );
+          filtered_rows["AM"]["Absent"] = rows.filter(
+            (student) => student.AM_Status == "Absent"
+          );
+          filtered_rows["AM"]["Leave"] = rows.filter(
+            (student) => student.AM_Status == "Leave"
+          );
+          filtered_rows["PM"]["Present"] = rows.filter(
+            (student) => student.PM_Status == "Present"
+          );
+          filtered_rows["PM"]["Absent"] = rows.filter(
+            (student) => student.PM_Status == "Absent"
+          );
+          filtered_rows["PM"]["Leave"] = rows.filter(
+            (student) => student.PM_Status == "Leave"
+          );
+          filtered_rows["Today"]["Present"] = rows.filter(
+            (student) =>
+              student.AM_Status === "Present" || student.PM_Status === "Present"
+          );
+
+          filtered_rows["Today"]["Leave"] = rows.filter(
+            (student) =>
+              (student.AM_Status === "Leave" ||
+                student.PM_Status === "Leave") &&
+              student.AM_Status !== "Present" &&
+              student.PM_Status !== "Present"
+          );
+
+          filtered_rows["Today"]["Absent"] = rows.filter(
+            (student) =>
+              (student.AM_Status === "Absent" ||
+                student.PM_Status === "Absent") &&
+              student.AM_Status !== "Present" &&
+              student.PM_Status !== "Present" &&
+              student.AM_Status !== "Leave" &&
+              student.PM_Status !== "Leave"
+          );
+
+          return res.json({ success: true, filtered_data: filtered_rows });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/getstudentattendance",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
