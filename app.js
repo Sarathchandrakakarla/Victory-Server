@@ -22,9 +22,11 @@ const pool = mysql.createPool({
   user: "kakarla",
   password: "Kscr2004",
   database: "vtest1",
-  connectionLimit: 10, // Adjust the connection limit as needed
-  /* waitForConnections: true,
-  connectTimeout: 30000, */
+  connectionLimit: 50,
+  waitForConnections: true,
+  queueLimit: 0,
+  acquireTimeout: 30000,
+  connectTimeout: 10000,
 });
 
 // Utility function to get a connection from the pool
