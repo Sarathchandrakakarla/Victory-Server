@@ -2170,7 +2170,7 @@ app.post("/getfacultyattendance", (req, res) => {
           message: "Database connection error",
         });
       connection.query(
-        "SELECT emd.Emp_Id,emd.Emp_First_Name,COALESCE(ea.AM, 'Not Punched') AS AM_Status,COALESCE(ea.PM, 'Not Punched') AS PM_Status,COALESCE(ea.AM_Punch_Time,'') AS AM_Punch_Time, COALESCE(ea.PM_Punch_Time,'') AS PM_Punch_Time FROM employee_master_data emd LEFT JOIN employee_attendance ea ON emd.Emp_Id = ea.Id_No AND ea.Date = ? ORDER BY emd.Emp_Id",
+        "SELECT emd.Emp_Id, emd.Emp_First_Name, COALESCE(CASE WHEN ea.AM = 'A' THEN 'Absent' WHEN ea.AM = 'L' THEN 'Leave' WHEN ea.AM = 'P' THEN 'Present' WHEN ea.AM IS NULL THEN 'Not Punched' ELSE 'Not Punched' END, 'Not Punched') AS AM_Status, COALESCE(CASE WHEN ea.PM = 'A' THEN 'Absent' WHEN ea.PM = 'L' THEN 'Leave' WHEN ea.PM = 'P' THEN 'Present' WHEN ea.PM IS NULL THEN 'Not Punched' ELSE 'Not Punched' END, 'Not Punched') AS PM_Status, COALESCE(ea.AM_Punch_Time, '') AS AM_Punch_Time, COALESCE(ea.PM_Punch_Time, '') AS PM_Punch_Time FROM employee_master_data emd LEFT JOIN employee_attendance ea ON emd.Emp_Id = ea.Id_No AND ea.Date = ? ORDER BY emd.Emp_Id",
         [Date],
         (err, rows) => {
           if (err) {
@@ -2178,15 +2178,15 @@ app.post("/getfacultyattendance", (req, res) => {
           }
           let filtered_rows = { AM: {}, PM: {}, Today: {} };
           filtered_rows["AM"]["Present"] = rows.filter(
-            (emp) => emp.AM_Status == "P"
+            (emp) => emp.AM_Status == "Present"
           );
 
           filtered_rows["AM"]["Absent"] = rows.filter(
-            (emp) => emp.AM_Status == "A"
+            (emp) => emp.AM_Status == "Abasent"
           );
 
           filtered_rows["AM"]["Leave"] = rows.filter(
-            (emp) => emp.AM_Status == "L"
+            (emp) => emp.AM_Status == "Leave"
           );
 
           filtered_rows["AM"]["Not Punched"] = rows.filter(
@@ -2194,15 +2194,15 @@ app.post("/getfacultyattendance", (req, res) => {
           );
 
           filtered_rows["PM"]["Absent"] = rows.filter(
-            (emp) => emp.PM_Status == "A"
+            (emp) => emp.PM_Status == "Absent"
           );
 
           filtered_rows["PM"]["Present"] = rows.filter(
-            (emp) => emp.PM_Status == "P"
+            (emp) => emp.PM_Status == "Present"
           );
 
           filtered_rows["PM"]["Leave"] = rows.filter(
-            (emp) => emp.PM_Status == "L"
+            (emp) => emp.PM_Status == "Leave"
           );
 
           filtered_rows["PM"]["Not Punched"] = rows.filter(
@@ -2213,26 +2213,24 @@ app.post("/getfacultyattendance", (req, res) => {
 
           filtered_rows["Today"]["Present"] = rows.filter((emp) => {
             return (
-              (emp.AM_Status === "P" || emp.PM_Status === "P") && // Present in AM or PM
-              emp.AM_Status !== "L" && // Not Leave in AM
-              emp.PM_Status !== "L" // Not Leave in PM
+              emp.AM_Status === "Present" || emp.PM_Status === "Present" // Present in AM or PM
             );
           });
 
           filtered_rows["Today"]["Absent"] = rows.filter((emp) => {
             return (
               // Absent should only be categorized as Absent if neither is present or on leave
-              (emp.AM_Status === "A" || emp.PM_Status === "A") &&
-              !(emp.AM_Status === "P" || emp.PM_Status === "P") && // Not Present
-              !(emp.AM_Status === "L" || emp.PM_Status === "L") // Not Leave
+              (emp.AM_Status === "Absent" || emp.PM_Status === "Absent") &&
+              !(emp.AM_Status === "Present" || emp.PM_Status === "Present") && // Not Present
+              !(emp.AM_Status === "Leave" || emp.PM_Status === "Leave") // Not Leave
             );
           });
 
           filtered_rows["Today"]["Leave"] = rows.filter((emp) => {
             return (
               // Leave is categorized if either AM or PM is Leave, but the other shouldn't be Present
-              (emp.AM_Status === "L" || emp.PM_Status === "L") &&
-              !(emp.AM_Status === "P" || emp.PM_Status === "P") // Not Present in either AM or PM
+              (emp.AM_Status === "Leave" || emp.PM_Status === "Leave") &&
+              !(emp.AM_Status === "Present" || emp.PM_Status === "Present") // Not Present in either AM or PM
             );
           });
 
