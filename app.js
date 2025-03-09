@@ -368,7 +368,7 @@ app.post("/student/viewdetails", (req, res) => {
             return res.json({ success: true, data: Object.entries(rows[0]) });
           }
           var siblings = rows[0]["Siblings"];
-          if (siblings == "") {
+          if (siblings == null || siblings == "") {
             rows[0]["Siblings"] = [];
             return res.json({ success: true, data: Object.entries(rows[0]) });
           } else {
