@@ -2182,7 +2182,7 @@ app.post("/getfacultyattendance", (req, res) => {
           );
 
           filtered_rows["AM"]["Absent"] = rows.filter(
-            (emp) => emp.AM_Status == "Abasent"
+            (emp) => emp.AM_Status == "Absent"
           );
 
           filtered_rows["AM"]["Leave"] = rows.filter(
@@ -2317,7 +2317,11 @@ app.post("/getstudentattendance", (req, res) => {
               student.PM_Status !== "Leave"
           );
 
-          return res.json({ success: true, filtered_data: filtered_rows });
+          return res.json({
+            success: true,
+            data: rows,
+            filtered_data: filtered_rows,
+          });
         }
       );
     });
