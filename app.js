@@ -504,7 +504,6 @@ app.post("/student/attendance/view", (req, res) => {
           message: "Database connection error",
         });
       connection.query(query1, (err, rows) => {
-        connection.release();
         if (err) {
           return res.json({ success: false, message: err.message });
         }
@@ -518,27 +517,16 @@ app.post("/student/attendance/view", (req, res) => {
           return new Promise((resolve, reject) => {
             const query2 = `SELECT * FROM \`attendance_daily\` WHERE Id_No = '${id}' AND Date = '${Date}' AND ${Type} IN ('A','L')`;
 
-            getConnection((e2, conn) => {
-              if (e2) {
-                return reject({
-                  success: false,
-                  message: "Database connection error",
-                });
+            connection.query(query2, (e3, rows) => {
+              if (e3) {
+                return reject({ success: false, message: e3.message });
               }
 
-              conn.query(query2, (e3, rows) => {
-                conn.release();
-
-                if (e3) {
-                  return reject({ success: false, message: e3.message });
-                }
-
-                if (rows.length === 0) {
-                  resolve({ Id_No: id, Name: name, Attendance: "P" });
-                } else {
-                  resolve({ Id_No: id, Name: name, Attendance: rows[0][Type] });
-                }
-              });
+              if (rows.length === 0) {
+                resolve({ Id_No: id, Name: name, Attendance: "P" });
+              } else {
+                resolve({ Id_No: id, Name: name, Attendance: rows[0][Type] });
+              }
             });
           });
         };
