@@ -2158,7 +2158,7 @@ app.post("/getfacultyattendance", (req, res) => {
           message: "Database connection error",
         });
       connection.query(
-        "SELECT emd.Emp_Id, emd.Emp_First_Name, COALESCE(CASE WHEN ea.AM = 'A' THEN 'Absent' WHEN ea.AM = 'L' THEN 'Leave' WHEN ea.AM = 'P' THEN 'Present' WHEN ea.AM IS NULL THEN 'Not Punched' ELSE 'Not Punched' END, 'Not Punched') AS AM_Status, COALESCE(CASE WHEN ea.PM = 'A' THEN 'Absent' WHEN ea.PM = 'L' THEN 'Leave' WHEN ea.PM = 'P' THEN 'Present' WHEN ea.PM IS NULL THEN 'Not Punched' ELSE 'Not Punched' END, 'Not Punched') AS PM_Status, COALESCE(ea.AM_Punch_Time, '') AS AM_Punch_Time, COALESCE(ea.PM_Punch_Time, '') AS PM_Punch_Time FROM employee_master_data emd LEFT JOIN employee_attendance ea ON emd.Emp_Id = ea.Id_No AND ea.Date = ? ORDER BY emd.Emp_Id",
+        "SELECT emd.Emp_Id, emd.Emp_First_Name, COALESCE(CASE WHEN ea.AM = 'A' THEN 'Absent' WHEN ea.AM = 'L' THEN 'Leave' WHEN ea.AM = 'P' THEN 'Present' WHEN ea.AM IS NULL THEN 'Not Punched' ELSE 'Not Punched' END, 'Not Punched') AS AM_Status, COALESCE(CASE WHEN ea.PM = 'A' THEN 'Absent' WHEN ea.PM = 'L' THEN 'Leave' WHEN ea.PM = 'P' THEN 'Present' WHEN ea.PM IS NULL THEN 'Not Punched' ELSE 'Not Punched' END, 'Not Punched') AS PM_Status, COALESCE(ea.AM_Punch_Time, '') AS AM_Punch_Time, COALESCE(ea.PM_Punch_Time, '') AS PM_Punch_Time FROM employee_master_data emd LEFT JOIN employee_attendance ea ON emd.Emp_Id = ea.Id_No AND ea.Date = ? WHERE emd.Status = 'Working' ORDER BY emd.Emp_Id",
         [Date],
         (err, rows) => {
           if (err) {
