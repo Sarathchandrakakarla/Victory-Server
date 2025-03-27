@@ -3,6 +3,7 @@ const cors = require("cors");
 const mysql = require("mysql"); // Use mysql2 for better performance and features
 const bcrypt = require("bcrypt"); // Use bcrypt directly
 const axios = require("axios");
+const moment = require("moment");
 const app = express();
 const PORT = 3000;
 const TokenFile = require("./token");
@@ -279,6 +280,12 @@ app.post("/student_login", (req, res) => {
                   message: "Incorrect Password",
                 });
               }
+              if (rows[0].Status == "Disabled") {
+                return res.json({
+                  success: false,
+                  message: "Your Login has been Disabled..Contact Admin Office",
+                });
+              }
               logger.info({
                 label: "Authentication",
                 message: {
@@ -450,14 +457,25 @@ app.post("/student/viewdetails", (req, res) => {
 
 app.post("/student/search", (req, res) => {
   try {
-    let { SearchBy, Search } = req.body;
-    let query;
-    query =
-      "SELECT Id_No,First_Name,Sur_Name,Father_Name,Stu_Class AS Class,Stu_Section AS Section,Mobile FROM `student_master_data` WHERE " +
-      SearchBy +
-      " LIKE '%" +
-      Search +
-      "%' ORDER BY Id_No DESC";
+    let { SearchBy, Search, Page, Limit } = req.body;
+
+    // Default values for pagination
+    Page = parseInt(Page) || 1; // Default to page 1 if not provided
+    Limit = parseInt(Limit) || 50; // Default limit is 50 students per page
+    let Offset = (Page - 1) * Limit; // Calculate OFFSET
+
+    let query = `
+      SELECT Id_No, First_Name, Sur_Name, Father_Name, 
+             Stu_Class AS Class, Stu_Section AS Section, Mobile 
+      FROM student_master_data 
+      WHERE ${SearchBy} LIKE ? 
+      ORDER BY Id_No DESC 
+      LIMIT ? OFFSET ?`;
+
+    let countQuery = `
+      SELECT COUNT(*) AS total FROM student_master_data 
+      WHERE ${SearchBy} LIKE ?`;
+
     getConnection((err, connection) => {
       if (err)
         return res.json({
@@ -465,15 +483,34 @@ app.post("/student/search", (req, res) => {
           message: "Database connection error",
         });
 
-      connection.query(query, (err, rows) => {
-        connection.release();
+      // First, get the total count of matching records
+      connection.query(countQuery, [`%${Search}%`], (err, countResult) => {
         if (err) {
+          connection.release();
           return res.json({ success: false, message: err.message });
         }
-        if (rows.length === 0) {
-          return res.json({ success: false, message: "No Student Found" });
-        }
-        res.json({ success: true, data: rows });
+
+        let totalRecords = countResult[0].total;
+        let totalPages = Math.ceil(totalRecords / Limit); // Calculate total pages
+
+        // Then, get the paginated records
+        connection.query(query, [`%${Search}%`, Limit, Offset], (err, rows) => {
+          connection.release();
+          if (err) {
+            return res.json({ success: false, message: err.message });
+          }
+          if (rows.length === 0) {
+            return res.json({ success: false, message: "No Student Found" });
+          }
+
+          res.json({
+            success: true,
+            data: rows,
+            totalRecords: totalRecords,
+            totalPages: totalPages,
+            currentPage: Page,
+          });
+        });
       });
     });
   } catch (err) {
@@ -484,6 +521,7 @@ app.post("/student/search", (req, res) => {
         timeZone: "Asia/Kolkata",
       }),
     });
+    res.json({ success: false, message: "Server Error" });
   }
 });
 
@@ -556,7 +594,58 @@ app.post("/student/attendance/view", (req, res) => {
 
 app.post("/student/attendance/upload", async (req, res) => {
   try {
-    let { Class, Section, Date, Type, Data } = req.body;
+    var { Class, Section, Date, Type, Data } = req.body;
+
+    function submitAttendance(connection) {
+      return new Promise((resolve, reject) => {
+        connection.query(
+          "SELECT * FROM class_attendance WHERE Date = ? AND Class = ? AND Section = ?",
+          [Date, Class, Section],
+          async (err, rows) => {
+            if (err) {
+              return resolve({ success: false, message: err });
+            }
+            const currentTime = moment().format("hh:mm:ss a");
+            if (rows.length == 0) {
+              await connection.query(
+                `INSERT INTO class_attendance (Date, Class, Section, ${Type}_Status, ${Type}_Punch_Time) 
+          VALUES (?, ?, ?, 'Submitted', ?)`,
+                [Date, Class, Section, currentTime],
+                (er, res) => {
+                  if (er) {
+                    return resolve({ success: false, message: err });
+                  }
+                  return resolve({
+                    success: true,
+                    message: "Class Attendance Inserted Successfully",
+                  });
+                }
+              );
+            } else {
+              if (
+                !rows[0][`${Type}_Status`] ||
+                rows[0][`${Type}_Status`] == null
+              ) {
+                connection.query(
+                  `UPDATE class_attendance SET ${Type}_Status = 'Submitted', ${Type}_Punch_Time = ? 
+                  WHERE Class = ? AND Section = ? AND Date = ?`,
+                  [currentTime, Class, Section, Date],
+                  (er, res) => {
+                    if (er) {
+                      return { success: false, message: err };
+                    }
+                    return resolve({
+                      success: true,
+                      message: "Class Attendance Updated Successfully",
+                    });
+                  }
+                );
+              }
+            }
+          }
+        );
+      });
+    }
 
     try {
       getConnection(async (err, connection) => {
@@ -627,7 +716,12 @@ app.post("/student/attendance/upload", async (req, res) => {
               );
             }
           })
-          .then(() => {
+          .then(async () => {
+            Promise.resolve(submitAttendance(connection)).then((r) => {
+              return r;
+            });
+          })
+          .then((v) => {
             // Send success response
             res.json({
               success: true,
@@ -668,7 +762,6 @@ app.post("/student/vanattendance/view", (req, res) => {
           message: "Database connection error",
         });
       connection.query(query1, (err, rows) => {
-        connection.release();
         if (err) {
           return res.json({ success: false, message: err.message });
         }
@@ -682,27 +775,16 @@ app.post("/student/vanattendance/view", (req, res) => {
           return new Promise((resolve, reject) => {
             const query2 = `SELECT * FROM \`van_attendance_daily\` WHERE Id_No = '${id}' AND Date = '${Date}' AND ${Type} IN ('A')`;
 
-            getConnection((e2, conn) => {
-              if (e2) {
-                return reject({
-                  success: false,
-                  message: "Database connection error",
-                });
+            connection.query(query2, (e3, rows) => {
+              if (e3) {
+                return reject({ success: false, message: e3.message });
               }
 
-              conn.query(query2, (e3, rows) => {
-                conn.release();
-
-                if (e3) {
-                  return reject({ success: false, message: e3.message });
-                }
-
-                if (rows.length === 0) {
-                  resolve({ Id_No: id, Name: name, Attendance: "P" });
-                } else {
-                  resolve({ Id_No: id, Name: name, Attendance: rows[0][Type] });
-                }
-              });
+              if (rows.length === 0) {
+                resolve({ Id_No: id, Name: name, Attendance: "P" });
+              } else {
+                resolve({ Id_No: id, Name: name, Attendance: rows[0][Type] });
+              }
             });
           });
         };
@@ -1436,7 +1518,7 @@ app.post("/student/marks", (req, res) => {
                         sum += marks["Subjects"][subject];
                       });
                       marks["Total"] = sum;
-                      let Max_Total = Max_Marks * subjects.length;
+                      //let Max_Total = Max_Marks * subjects.length;
                       let Percentage = parseFloat(
                         (sum / Max_Total) * 100
                       ).toFixed(2);
@@ -2256,6 +2338,23 @@ app.post("/getstudentattendance", (req, res) => {
           success: false,
           message: "Database connection error",
         });
+      let submitted_classes = { AM: [], PM: [] };
+      connection.query(
+        "SELECT * FROM `class_attendance` WHERE Date = ?",
+        [Date],
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          submitted_classes["AM"] = rows
+            .filter((row) => row["AM_Status"] == "Submitted")
+            .map((row) => `${row["Class"]} ${row["Section"]}`);
+
+          submitted_classes["PM"] = rows
+            .filter((row) => row["PM_Status"] == "Submitted")
+            .map((row) => `${row["Class"]} ${row["Section"]}`);
+        }
+      );
       connection.query(
         "SELECT smd.Id_No,smd.First_Name,smd.Stu_Class AS Class,smd.Stu_Section AS Section,COALESCE( CASE WHEN ad.AM = 'A' THEN 'Absent' WHEN ad.AM = 'L' THEN 'Leave' ELSE 'Present' END, 'Present' ) AS AM_Status, COALESCE( CASE WHEN ad.PM = 'A' THEN 'Absent' WHEN ad.PM = 'L' THEN 'Leave' ELSE 'Present' END, 'Present' ) AS PM_Status FROM student_master_data smd LEFT JOIN attendance_daily ad ON smd.Id_No = ad.Id_No AND ad.Date = ? WHERE smd.Stu_Class IN ('PreKG','LKG','UKG','1 CLASS','2 CLASS','3 CLASS','4 CLASS','5 CLASS','6 CLASS','7 CLASS','8 CLASS','9 CLASS','10 CLASS') ORDER BY FIELD(smd.Stu_Class, 'PreKG', 'LKG', 'UKG', '1 CLASS', '2 CLASS', '3 CLASS', '4 CLASS', '5 CLASS', '6 CLASS', '7 CLASS', '8 CLASS', '9 CLASS', '10 CLASS'),FIELD(smd.Stu_Section, 'A', 'B', 'C', 'D');",
         [Date],
@@ -2265,30 +2364,73 @@ app.post("/getstudentattendance", (req, res) => {
           }
           let filtered_rows = { AM: {}, PM: {}, Today: {} };
           filtered_rows["AM"]["Present"] = rows.filter(
-            (student) => student.AM_Status == "Present"
+            (student) =>
+              submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              ) && student.AM_Status == "Present"
           );
           filtered_rows["AM"]["Absent"] = rows.filter(
-            (student) => student.AM_Status == "Absent"
+            (student) =>
+              submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              ) && student.AM_Status == "Absent"
           );
           filtered_rows["AM"]["Leave"] = rows.filter(
-            (student) => student.AM_Status == "Leave"
+            (student) =>
+              submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              ) && student.AM_Status == "Leave"
+          );
+          filtered_rows["AM"]["Not Submitted"] = rows.filter(
+            (student) =>
+              !submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              )
           );
           filtered_rows["PM"]["Present"] = rows.filter(
-            (student) => student.PM_Status == "Present"
+            (student) =>
+              submitted_classes["PM"].includes(
+                `${student.Class} ${student.Section}`
+              ) && student.PM_Status == "Present"
           );
           filtered_rows["PM"]["Absent"] = rows.filter(
-            (student) => student.PM_Status == "Absent"
+            (student) =>
+              submitted_classes["PM"].includes(
+                `${student.Class} ${student.Section}`
+              ) && student.PM_Status == "Absent"
           );
           filtered_rows["PM"]["Leave"] = rows.filter(
-            (student) => student.PM_Status == "Leave"
+            (student) =>
+              submitted_classes["PM"].includes(
+                `${student.Class} ${student.Section}`
+              ) && student.PM_Status == "Leave"
+          );
+          filtered_rows["PM"]["Not Submitted"] = rows.filter(
+            (student) =>
+              !submitted_classes["PM"].includes(
+                `${student.Class} ${student.Section}`
+              )
           );
           filtered_rows["Today"]["Present"] = rows.filter(
             (student) =>
-              student.AM_Status === "Present" || student.PM_Status === "Present"
+              (submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              ) ||
+                submitted_classes["PM"].includes(
+                  `${student.Class} ${student.Section}`
+                )) &&
+              (student.AM_Status === "Present" ||
+                student.PM_Status === "Present")
           );
 
           filtered_rows["Today"]["Leave"] = rows.filter(
             (student) =>
+              (submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              ) ||
+                submitted_classes["PM"].includes(
+                  `${student.Class} ${student.Section}`
+                )) &&
               (student.AM_Status === "Leave" ||
                 student.PM_Status === "Leave") &&
               student.AM_Status !== "Present" &&
@@ -2297,12 +2439,27 @@ app.post("/getstudentattendance", (req, res) => {
 
           filtered_rows["Today"]["Absent"] = rows.filter(
             (student) =>
+              (submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              ) ||
+                submitted_classes["PM"].includes(
+                  `${student.Class} ${student.Section}`
+                )) &&
               (student.AM_Status === "Absent" ||
                 student.PM_Status === "Absent") &&
               student.AM_Status !== "Present" &&
               student.PM_Status !== "Present" &&
               student.AM_Status !== "Leave" &&
               student.PM_Status !== "Leave"
+          );
+          filtered_rows["Today"]["Not Submitted"] = rows.filter(
+            (student) =>
+              !submitted_classes["AM"].includes(
+                `${student.Class} ${student.Section}`
+              ) &&
+              !submitted_classes["PM"].includes(
+                `${student.Class} ${student.Section}`
+              )
           );
 
           return res.json({
@@ -2482,15 +2639,18 @@ app.post("/getroutes", (req, res) => {
       if (err) {
         return res.json({ success: false, message: err });
       }
-      connection.query("SELECT * FROM `van_route`", (er, rows) => {
-        if (er) {
-          return res.json({ success: false, message: er });
+      connection.query(
+        "SELECT * FROM `van_route` ORDER BY Van_Route",
+        (er, rows) => {
+          if (er) {
+            return res.json({ success: false, message: er });
+          }
+          return res.json({
+            success: true,
+            data: rows.map((row) => row.Van_Route),
+          });
         }
-        return res.json({
-          success: true,
-          data: rows.map((row) => row.Van_Route),
-        });
-      });
+      );
     });
   } catch (err) {
     logger.error({
