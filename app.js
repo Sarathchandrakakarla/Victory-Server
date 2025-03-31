@@ -348,6 +348,38 @@ app.post("/student/getclass", (req, res) => {
   }
 });
 
+app.post("/student/getaccessstatus", (req, res) => {
+  try {
+    let { Id_No } = req.body;
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      connection.query(
+        "SELECT Status FROM `student` WHERE Id_No = ?",
+        [Id_No],
+        (err, rows) => {
+          if (err) return res.json({ success: false, message: err });
+          if (rows.length == 0) {
+            return res.json({ success: true, Status: "Disabled" });
+          }
+          return res.json({ success: true, Status: rows[0]["Status"] });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/student/getclass",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 app.post("/student/viewdetails", (req, res) => {
   try {
     let { Id_No, Sibling_Status } = req.body;
@@ -522,6 +554,73 @@ app.post("/student/search", (req, res) => {
       }),
     });
     res.json({ success: false, message: "Server Error" });
+  }
+});
+
+app.post("/student/individualattendance/view", (req, res) => {
+  try {
+    let { Id_No, Date } = req.body;
+
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+
+      connection.query(
+        "SELECT ca.AM_Status,ca.PM_Status FROM `class_attendance` ca JOIN student_master_data smd ON smd.Stu_Class = ca.Class AND smd.Stu_Section = ca.Section WHERE smd.Id_No = ? AND ca.Date = ?",
+        [Id_No, Date],
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          if (rows.length == 0) {
+            return res.json({ success: true, data: { AM: "N", PM: "N" } });
+          }
+          connection.query(
+            "SELECT * FROM `attendance_daily` WHERE Id_No = ? AND Date = ?",
+            [Id_No, Date],
+            (err, att_rows) => {
+              if (err) {
+                return res.json({ success: false, message: err });
+              }
+              let punchdetails = { AM: "N", PM: "N" };
+              if (att_rows.length == 0) {
+                if (rows[0].AM_Status == "Submitted") {
+                  punchdetails["AM"] = "P";
+                }
+                if (rows[0].PM_Status == "Submitted") {
+                  punchdetails["PM"] = "P";
+                }
+              } else {
+                if (rows[0].AM_Status == "Submitted") {
+                  punchdetails["AM"] =
+                    att_rows[0]["AM"] == null || att_rows[0]["AM"] == ""
+                      ? "P"
+                      : att_rows[0]["AM"];
+                }
+                if (rows[0].PM_Status == "Submitted") {
+                  punchdetails["PM"] =
+                    att_rows[0]["PM"] == null || att_rows[0]["PM"] == ""
+                      ? "P"
+                      : att_rows[0]["PM"];
+                }
+              }
+              return res.json({ success: true, data: punchdetails });
+            }
+          );
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/faculty/attendance/view",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
   }
 });
 
