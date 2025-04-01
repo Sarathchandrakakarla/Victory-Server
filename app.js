@@ -1734,6 +1734,63 @@ app.post("/student/gethomeworks", (req, res) => {
   }
 });
 
+app.post("/student/getmonthlyattendance", (req, res) => {
+  try {
+    const { Id_No } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      let working_days = {};
+      let attendance_data = {};
+      connection.query(
+        "SELECT * FROM `working_days` WHERE Working_Days != 0",
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          rows.forEach((row) => {
+            working_days[row["Month"]] = row["Working_Days"];
+          });
+        }
+      );
+      connection.query(
+        "SELECT * FROM `stu_att_master` WHERE Id_No = ?",
+        [Id_No],
+        (err, rows) => {
+          if (err) {
+            return res.json({ success: false, message: err });
+          }
+          if (rows.length == 0) {
+            return res.json({
+              success: false,
+              message: "Your Attendance Not Available",
+            });
+          }
+          attendance_data = Object.entries(working_days).map((data) => {
+            let temp = {};
+            temp[data[0]] = {
+              Total_Days: data[1],
+              Present_Days: rows[0][data[0]],
+              Absent_Days: parseInt(data[1]) - parseInt(rows[0][data[0]]),
+            };
+            return temp;
+          });
+          return res.json({ success: true, data: attendance_data });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/student/getmonthlyattendance",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 app.post("/classwisemarks", (req, res) => {
   try {
     let { Class, Section, Exam, MarksType } = req.body;
