@@ -1708,7 +1708,7 @@ app.post("/student/gethomeworks", (req, res) => {
                 return res.json({ success: false, message: val.data.message });
               }
               val.data.data.forEach((subject) => {
-                if (subject["data"][0] && subject["data"][1]) {
+                if (subject["data"][0] || subject["data"][1]) {
                   final_data.push({
                     subject: subject["subject"],
                     path: `https://victoryschools.in/Victory/Files/Homework/${rows[0].Class} ${rows[0].Section}/${Date}/${subject["subject"]}.pdf`,
