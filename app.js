@@ -1734,6 +1734,122 @@ app.post("/student/gethomeworks", (req, res) => {
   }
 });
 
+app.post("/student/homework/recordlog", (req, res) => {
+  try {
+    const { Id_No, Date, Subject } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      connection.query(
+        "SELECT * FROM `student_homework` WHERE Date = ? AND Id_No = ? AND Subject = ?",
+        [Date, Id_No, Subject],
+        (er, rows) => {
+          if (er) {
+            return res.json({ success: false, message: er });
+          }
+          if (rows.length == 0) {
+            connection.query(
+              "SELECT First_Name FROM `student_master_data` WHERE Id_No = ?",
+              [Id_No],
+              (er, student) => {
+                if (er) {
+                  return res.json({ success: false, message: er });
+                }
+                connection.query(
+                  "INSERT INTO `student_homework`(Date,Id_No,Name,Subject,First_View,Latest_View) VALUES(?,?,?,?,?,?)",
+                  [
+                    Date,
+                    Id_No,
+                    student[0].First_Name,
+                    Subject,
+                    moment().format("hh:mm:ss a"),
+                    moment().format("hh:mm:ss a"),
+                  ],
+                  (err, rows) => {
+                    if (err) {
+                      return res.json({ success: false, message: err });
+                    }
+                    if (rows["affectedRows"] != 0) {
+                      return res.json({
+                        success: true,
+                        message: "Log Record Inserted Succesfully",
+                      });
+                    } else {
+                      return res.json({
+                        success: false,
+                        message: "Log Record Insertion Failed",
+                      });
+                    }
+                  }
+                );
+              }
+            );
+          } else {
+            connection.query(
+              "UPDATE `student_homework` SET Latest_View = ? WHERE Date = ? AND Id_No = ? AND Subject = ?",
+              [moment().format("hh:mm:ss a"), Date, Id_No, Subject],
+              (err, rows) => {
+                if (err) {
+                  return res.json({ success: false, message: err });
+                }
+                if (rows["affectedRows"] != 0) {
+                  return res.json({
+                    success: true,
+                    message: "Log Record Updated Succesfully",
+                  });
+                } else {
+                  return res.json({
+                    success: false,
+                    message: "Log Record Updation Failed",
+                  });
+                }
+              }
+            );
+          }
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/student/homework/recordlog",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/gethomeworklogs", (req, res) => {
+  try {
+    const { Date, Class, Section, Subject } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      connection.query(
+        "SELECT smd.Id_No, smd.First_Name, CASE WHEN sh.Id_No IS NULL THEN 'Not Viewed Yet' ELSE 'Viewed' END AS View_Status, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.First_View END AS First_View, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.Latest_View END AS Latest_View FROM student_master_data smd LEFT JOIN student_homework sh ON smd.Id_No = sh.Id_No AND sh.Date = ? AND sh.Subject = ? WHERE smd.Stu_Class = ? AND smd.Stu_Section = ?;",
+        [Date, Subject, Class, Section],
+        (er, rows) => {
+          if (er) {
+            return res.json({ success: false, message: er });
+          }
+          return res.json({ success: true, data: rows });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/gethomeworklogs",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 app.post("/student/getmonthlyattendance", (req, res) => {
   try {
     const { Id_No } = req.body;
