@@ -1829,7 +1829,7 @@ app.post("/gethomeworklogs", (req, res) => {
         return res.json({ success: false, message: err });
       }
       connection.query(
-        "SELECT smd.Id_No, smd.First_Name, CASE WHEN sh.Id_No IS NULL THEN 'Not Viewed Yet' ELSE 'Viewed' END AS View_Status, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.First_View END AS First_View, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.Latest_View END AS Latest_View FROM student_master_data smd LEFT JOIN student_homework sh ON smd.Id_No = sh.Id_No AND sh.Date = ? AND sh.Subject = ? WHERE smd.Stu_Class = ? AND smd.Stu_Section = ?;",
+        "SELECT smd.Id_No, smd.First_Name, CASE WHEN sh.Id_No IS NULL THEN 'Not Viewed Yet' ELSE 'Viewed' END AS View_Status, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.First_View END AS First_View, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.Latest_View END AS Latest_View FROM student_master_data smd LEFT JOIN student_homework sh ON smd.Id_No = sh.Id_No AND sh.Date = ? AND sh.Subject = ? WHERE smd.Stu_Class = ? AND smd.Stu_Section = ?",
         [Date, Subject, Class, Section],
         (er, rows) => {
           if (er) {
