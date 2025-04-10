@@ -2906,8 +2906,8 @@ app.post("/notifications/send", (req, res) => {
               id = rows[0].Id + 1;
             }
             connection.query(
-              "INSERT INTO `notifications` VALUES('',?,?,?,?)",
-              [id, Topic, Text, date],
+              "INSERT INTO `notifications` VALUES('',?,?,?,?,?)",
+              [id, Topic, Text, date, isLink],
               (e, result) => {
                 if (e) {
                   return res.json({ success: false, message: e });
@@ -2919,7 +2919,7 @@ app.post("/notifications/send", (req, res) => {
         );
       });
     }
-    let { Topic, Text, Temporary } = req.body;
+    let { Topic, Text, Temporary, isLink } = req.body;
     if (Topic == "All Members") {
       Topic = "All";
     }
@@ -2932,6 +2932,15 @@ app.post("/notifications/send", (req, res) => {
         },
       },
     };
+    if (isLink) {
+      let url = Text.split("#link")[1].trim();
+      message.message["data"] = {
+        url: url,
+      };
+      let modified_text = Text.replace(/#link.*?#link/g, "").trim();
+      message.message.notification.body =
+        modified_text.length == 0 ? "Open this Link " + url : modified_text;
+    }
     if (!Temporary) InsertNotification();
     let Token = "";
     TokenFile.getToken()
