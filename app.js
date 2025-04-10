@@ -915,6 +915,57 @@ app.post("/student/vanattendance/upload", async (req, res) => {
   try {
     let { Route, Date, Type, Data } = req.body;
 
+    function submitVanAttendance(connection) {
+      return new Promise((resolve, reject) => {
+        connection.query(
+          "SELECT * FROM van_attendance WHERE Date = ? AND Route = ?",
+          [Date, Route],
+          async (err, rows) => {
+            if (err) {
+              return resolve({ success: false, message: err });
+            }
+            const currentTime = moment().format("hh:mm:ss a");
+            if (rows.length == 0) {
+              await connection.query(
+                `INSERT INTO van_attendance (Date, Route, ${Type}_Status, ${Type}_Punch_Time) 
+          VALUES (?, ?, 'Submitted', ?)`,
+                [Date, Route, currentTime],
+                (er, res) => {
+                  if (er) {
+                    return resolve({ success: false, message: err });
+                  }
+                  return resolve({
+                    success: true,
+                    message: "Route Attendance Inserted Successfully",
+                  });
+                }
+              );
+            } else {
+              if (
+                !rows[0][`${Type}_Status`] ||
+                rows[0][`${Type}_Status`] == null
+              ) {
+                connection.query(
+                  `UPDATE van_attendance SET ${Type}_Status = 'Submitted', ${Type}_Punch_Time = ? 
+                  WHERE Route = ? AND Date = ?`,
+                  [currentTime, Route, Date],
+                  (er, res) => {
+                    if (er) {
+                      return { success: false, message: err };
+                    }
+                    return resolve({
+                      success: true,
+                      message: "Route Attendance Updated Successfully",
+                    });
+                  }
+                );
+              }
+            }
+          }
+        );
+      });
+    }
+
     try {
       getConnection(async (err, connection) => {
         if (err) return res.json({ success: false, message: err.message });
@@ -984,6 +1035,11 @@ app.post("/student/vanattendance/upload", async (req, res) => {
               );
             }
           })
+          .then(async () => {
+            Promise.resolve(submitVanAttendance(connection)).then((r) => {
+              return r;
+            });
+          })
           .then(() => {
             // Send success response
             res.json({
@@ -1036,44 +1092,6 @@ app.post("/student/attendance/report", (req, res) => {
         );
       });
     }
-    function sortAttendance(data) {
-      let classes = ["PreKG", "LKG", "UKG"];
-      for (var i = 1; i <= 10; i++) {
-        classes.push(i + " CLASS");
-      }
-      let sections = ["A", "B", "C", "D"];
-      let sortedData = {};
-      classes.forEach((cls) => {
-        if (
-          !Object.keys(sortedData).includes(cls) &&
-          Object.keys(data).filter((cls_sec) => {
-            if (cls_sec.includes(cls)) {
-              return cls_sec;
-            }
-          }).length != 0
-        ) {
-          sortedData[cls] = {};
-        }
-        sections.forEach((sec) => {
-          if (Object.keys(sortedData).includes(cls)) {
-            if (
-              Object.keys(data).filter((cls_sec) => {
-                if (
-                  cls_sec[cls_sec.length - 1] == sec &&
-                  cls_sec.substring(0, cls_sec.length - 1) == cls
-                ) {
-                  return cls_sec;
-                }
-              }).length != 0 &&
-              !Object.keys(sortedData[cls]).includes(sec)
-            ) {
-              sortedData[cls][sec] = data[cls + sec];
-            }
-          }
-        });
-      });
-      return sortedData;
-    }
     function getAttendanceData(connection, id, name, section, mobile, type) {
       return new Promise((resolve) => {
         let query =
@@ -1114,7 +1132,7 @@ app.post("/student/attendance/report", (req, res) => {
       if (!Class && !Section) {
         let att_promise = new Promise((resolve) => {
           let query =
-            "SELECT * FROM `attendance_daily` WHERE Date = '" +
+            "SELECT * FROM `attendance_daily` ad JOIN `student_master_data` smd ON ad.Id_No = smd.Id_No WHERE Date = '" +
             Date +
             "' AND " +
             Type;
@@ -1123,6 +1141,8 @@ app.post("/student/attendance/report", (req, res) => {
           } else {
             query += " = '" + AbsentType + "'";
           }
+          query +=
+            " ORDER BY FIELD(smd.Stu_Class,'PreKG','LKG','UKG','1 CLASS','2 CLASS','3 CLASS','4 CLASS','5 CLASS','6 CLASS','7 CLASS','8 CLASS','9 CLASS','10 CLASS'),FIELD(Stu_Section,'A','B','C','D')";
           connection.query(query, (err, rows) => {
             if (err) {
               return resolve(err);
@@ -1153,7 +1173,6 @@ app.post("/student/attendance/report", (req, res) => {
                 }
                 data[student.Class + student.Section].push(student);
               });
-              data = sortAttendance(data);
               res.json({ success: true, data: data });
             });
           }
@@ -1328,79 +1347,124 @@ app.post("/student/vanattendance/report", (req, res) => {
                 }
               });
             });
-            Promise.resolve(att_promise).then((value) => {
-              if (value.length == 0) {
-                res.json({ success: true, data: [] });
-              } else {
-                let promises = [];
-                value.forEach((id) => {
-                  promises.push(getDetails(connection, id));
-                });
-                Promise.all(promises).then((value) => {
-                  let data = {};
-                  value.map((student) => {
-                    if (!Object.keys(data).includes(student.Route)) {
-                      data[student.Route] = [];
-                    }
-                    data[student.Route].push(student);
+            let attendance_submitted_promise = new Promise((resolve) => {
+              connection.query(
+                "SELECT * FROM `van_attendance` WHERE Date = ? AND Route IN ('" +
+                  routes.join("','") +
+                  "') AND ?? = 'Submitted'",
+                [Date, `${Type}_Status`],
+                (err, rows) => {
+                  if (err) {
+                    return res.json({ success: false, message: err });
+                  }
+                  if (rows.length != routes.length) {
+                    resolve({
+                      success: false,
+                      message: "Attendance Not Submitted for some Routes",
+                    });
+                  } else {
+                    resolve({
+                      success: true,
+                      message: "Attendance Submitted for All Routes",
+                    });
+                  }
+                }
+              );
+            });
+            Promise.resolve(attendance_submitted_promise).then((val) => {
+              Promise.resolve(att_promise).then((value) => {
+                if (value.length == 0) {
+                  res.json({ success: true, data: [] });
+                } else {
+                  let promises = [];
+                  value.forEach((id) => {
+                    promises.push(getDetails(connection, id));
                   });
-                  res.json({ success: true, data: data });
-                });
-              }
+                  Promise.all(promises).then((value) => {
+                    let data = {};
+                    value.map((student) => {
+                      if (!Object.keys(data).includes(student.Route)) {
+                        data[student.Route] = [];
+                      }
+                      data[student.Route].push(student);
+                    });
+                    res.json({
+                      success: true,
+                      data: data,
+                      message: val.message,
+                    });
+                  });
+                }
+              });
             });
           });
       } else {
-        let query =
-          "SELECT Id_No,First_Name AS Name,Stu_Class AS Class,Stu_Section AS Section,Mobile,Van_Route AS Route FROM `student_master_data` WHERE Van_Route = '" +
-          Route +
-          "' AND (Stu_Class LIKE '%CLASS%' OR Stu_Class ='PreKG' OR Stu_Class ='LKG' OR Stu_Class ='UKG')";
-        new Promise((resolve) => {
-          connection.query(query, (err, rows) => {
-            if (err) resolve(err);
-            else
-              resolve(
-                rows.map((row) => [
-                  row.Id_No,
-                  row.Name,
-                  row.Class,
-                  row.Section,
-                  row.Mobile,
-                  row.Route,
-                ])
-              );
-          });
-        }).then((ids) => {
-          let promises = [];
-          ids.forEach((student) => {
-            promises.push(
-              getAttendanceData(
-                connection,
-                student[0],
-                student[1],
-                student[2],
-                student[3],
-                student[4],
-                student[5]
-              )
-            );
-          });
-          Promise.all(promises)
-            .then((value) => {
-              let data = {};
-              value.map((student) => {
-                if (student) {
-                  if (!Object.keys(data).includes(student.Route)) {
-                    data[student.Route] = [];
-                  }
-                  data[student.Route].push(student);
-                }
+        connection.query(
+          "SELECT * FROM `van_attendance` WHERE Date = ? AND Route = ? AND ?? = 'Submitted'",
+          [Date, Route, `${Type}_Status`],
+          (err, rows) => {
+            if (err) {
+              return res.json({ success: false, message: err });
+            }
+            if (rows.length == 0) {
+              return res.json({
+                success: false,
+                message: "Attendance Not Submitted for this Route",
               });
-              res.json({ success: true, data: data });
-            })
-            .catch((err) => {
-              res.json({ success: false, message: err });
+            }
+            let query =
+              "SELECT Id_No,First_Name AS Name,Stu_Class AS Class,Stu_Section AS Section,Mobile,Van_Route AS Route FROM `student_master_data` WHERE Van_Route = '" +
+              Route +
+              "' AND (Stu_Class LIKE '%CLASS%' OR Stu_Class ='PreKG' OR Stu_Class ='LKG' OR Stu_Class ='UKG')";
+            new Promise((resolve) => {
+              connection.query(query, (err, rows) => {
+                if (err) resolve(err);
+                else
+                  resolve(
+                    rows.map((row) => [
+                      row.Id_No,
+                      row.Name,
+                      row.Class,
+                      row.Section,
+                      row.Mobile,
+                      row.Route,
+                    ])
+                  );
+              });
+            }).then((ids) => {
+              let promises = [];
+              ids.forEach((student) => {
+                promises.push(
+                  getAttendanceData(
+                    connection,
+                    student[0],
+                    student[1],
+                    student[2],
+                    student[3],
+                    student[4],
+                    student[5]
+                  )
+                );
+              });
+              Promise.all(promises)
+                .then((value) => {
+                  let data = {};
+                  value.map((student) => {
+                    if (student) {
+                      if (!Object.keys(data).includes(student.Route)) {
+                        data[student.Route] = [];
+                      }
+                      data[student.Route].push(student);
+                    }
+                  });
+                  res.json({ success: true, data: data });
+                })
+                .catch((err) => {
+                  res.json({ success: false, message: err });
+                });
             });
-        });
+          }
+        );
       }
     });
   } catch (err) {
@@ -2745,6 +2809,142 @@ app.post("/getstudentattendance", (req, res) => {
   } catch (err) {
     logger.error({
       label: "/getstudentattendance",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/getvanattendance", (req, res) => {
+  try {
+    let { Date } = req.body;
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      let submitted_routes = { AM: [], PM: [] };
+      let routes = [];
+      function getRoutes() {
+        return new Promise((resolve, reject) => {
+          connection.query(
+            "SELECT Van_Route FROM `van_route` ORDER BY Van_Route",
+            (er, rows) => {
+              if (er) {
+                return res.json({ success: false, message: er });
+              }
+              routes = rows.map((route) => route["Van_Route"]);
+              resolve(routes);
+            }
+          );
+        });
+      }
+      function getSubmittedRoutes() {
+        return new Promise((resolve, reject) => {
+          connection.query(
+            "SELECT * FROM `van_attendance` WHERE Date = ?",
+            [Date],
+            (err, rows) => {
+              if (err) {
+                return res.json({ success: false, message: err });
+              }
+              submitted_routes["AM"] = rows
+                .filter((row) => row["AM_Status"] == "Submitted")
+                .map((row) => row["Route"]);
+
+              submitted_routes["PM"] = rows
+                .filter((row) => row["PM_Status"] == "Submitted")
+                .map((row) => row["Route"]);
+              resolve(submitted_routes);
+            }
+          );
+        });
+      }
+      function getAttendanceData() {
+        return new Promise((resolve, reject) => {
+          connection.query(
+            "SELECT smd.Id_No,smd.First_Name,smd.Stu_Class AS Class,smd.Stu_Section AS Section,smd.Van_Route,COALESCE( CASE WHEN vad.AM = 'A' THEN 'Absent' ELSE 'Present' END, 'Present' ) AS AM_Status, COALESCE( CASE WHEN vad.PM = 'A' THEN 'Absent' ELSE 'Present' END, 'Present' ) AS PM_Status FROM student_master_data smd LEFT JOIN van_attendance_daily vad ON smd.Id_No = vad.Id_No AND vad.Date = ? WHERE smd.Stu_Class IN ('PreKG','LKG','UKG','1 CLASS','2 CLASS','3 CLASS','4 CLASS','5 CLASS','6 CLASS','7 CLASS','8 CLASS','9 CLASS','10 CLASS') AND smd.Van_Route IN ('" +
+              routes.join("','") +
+              "') ORDER BY Van_Route",
+            [Date],
+            (err, rows) => {
+              if (err) {
+                return res.json({ success: false, message: err });
+              }
+              let filtered_rows = { AM: {}, PM: {}, Today: {} };
+              filtered_rows["AM"]["Present"] = rows.filter(
+                (student) =>
+                  submitted_routes["AM"].includes(student.Van_Route) &&
+                  student.AM_Status == "Present"
+              );
+              filtered_rows["AM"]["Absent"] = rows.filter(
+                (student) =>
+                  submitted_routes["AM"].includes(student.Van_Route) &&
+                  student.AM_Status == "Absent"
+              );
+              filtered_rows["AM"]["Not Submitted"] = rows.filter(
+                (student) => !submitted_routes["AM"].includes(student.Van_Route)
+              );
+              filtered_rows["PM"]["Present"] = rows.filter(
+                (student) =>
+                  submitted_routes["PM"].includes(student.Van_Route) &&
+                  student.PM_Status == "Present"
+              );
+              filtered_rows["PM"]["Absent"] = rows.filter(
+                (student) =>
+                  submitted_routes["PM"].includes(student.Van_Route) &&
+                  student.PM_Status == "Absent"
+              );
+              filtered_rows["PM"]["Not Submitted"] = rows.filter(
+                (student) => !submitted_routes["PM"].includes(student.Van_Route)
+              );
+              filtered_rows["Today"]["Present"] = rows.filter(
+                (student) =>
+                  (submitted_routes["AM"].includes(student.Van_Route) ||
+                    submitted_routes["PM"].includes(student.Van_Route)) &&
+                  (student.AM_Status === "Present" ||
+                    student.PM_Status === "Present")
+              );
+
+              filtered_rows["Today"]["Absent"] = rows.filter(
+                (student) =>
+                  (submitted_routes["AM"].includes(student.Van_Route) ||
+                    submitted_routes["PM"].includes(student.Van_Route)) &&
+                  (student.AM_Status === "Absent" ||
+                    student.PM_Status === "Absent") &&
+                  student.AM_Status !== "Present" &&
+                  student.PM_Status !== "Present"
+              );
+              filtered_rows["Today"]["Not Submitted"] = rows.filter(
+                (student) =>
+                  !submitted_routes["AM"].includes(student.Van_Route) &&
+                  !submitted_routes["PM"].includes(student.Van_Route)
+              );
+              resolve(filtered_rows);
+
+              return res.json({
+                success: true,
+                data: rows,
+                filtered_data: filtered_rows,
+              });
+            }
+          );
+        });
+      }
+      Promise.resolve(getRoutes()).then(() => {
+        Promise.resolve(getSubmittedRoutes()).then(() => {
+          Promise.resolve(getAttendanceData()).then(() => {
+            //console.log("Done");
+          });
+        });
+      });
+    });
+  } catch (err) {
+    logger.error({
+      label: "/getvanattendance",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
