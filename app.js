@@ -704,7 +704,7 @@ app.post("/student/attendance/upload", async (req, res) => {
             if (err) {
               return resolve({ success: false, message: err });
             }
-            const currentTime = moment().format("hh:mm:ss a");
+            const currentTime = moment().zone("+05:30").format("hh:mm:ss a");
             if (rows.length == 0) {
               await connection.query(
                 `INSERT INTO class_attendance (Date, Class, Section, ${Type}_Status, ${Type}_Punch_Time) 
@@ -924,7 +924,7 @@ app.post("/student/vanattendance/upload", async (req, res) => {
             if (err) {
               return resolve({ success: false, message: err });
             }
-            const currentTime = moment().format("hh:mm:ss a");
+            const currentTime = moment().zone("+05:30").format("hh:mm:ss a");
             if (rows.length == 0) {
               await connection.query(
                 `INSERT INTO van_attendance (Date, Route, ${Type}_Status, ${Type}_Punch_Time) 
@@ -1827,8 +1827,8 @@ app.post("/student/homework/recordlog", (req, res) => {
                     Id_No,
                     student[0].First_Name,
                     Subject,
-                    moment().format("hh:mm:ss a"),
-                    moment().format("hh:mm:ss a"),
+                    moment().zone("+05:30").format("hh:mm:ss a"),
+                    moment().zone("+05:30").format("hh:mm:ss a"),
                   ],
                   (err, rows) => {
                     if (err) {
@@ -1852,7 +1852,12 @@ app.post("/student/homework/recordlog", (req, res) => {
           } else {
             connection.query(
               "UPDATE `student_homework` SET Latest_View = ? WHERE Date = ? AND Id_No = ? AND Subject = ?",
-              [moment().format("hh:mm:ss a"), Date, Id_No, Subject],
+              [
+                moment().zone("+05:30").format("hh:mm:ss a"),
+                Date,
+                Id_No,
+                Subject,
+              ],
               (err, rows) => {
                 if (err) {
                   return res.json({ success: false, message: err });
