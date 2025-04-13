@@ -286,7 +286,7 @@ app.post("/student_login", (req, res) => {
                   message: "Your Login has been Disabled..Contact Admin Office",
                 });
               }
-              /* logger.info({
+              logger.info({
                 label: "Authentication",
                 message: {
                   user: "Student",
@@ -297,7 +297,7 @@ app.post("/student_login", (req, res) => {
                 timestamp: new Date().toLocaleString(undefined, {
                   timeZone: "Asia/Kolkata",
                 }),
-              }); */
+              });
               res.json({
                 success: true,
                 data: { Name: rows[0].First_Name },
