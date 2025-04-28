@@ -49,13 +49,17 @@ app.get("/", (req, res) => {
 
 app.post("/logout", (req, res) => {
   try {
-    const { Username, UserType } = req.body;
+    const { Username, UserType, VersionCode, VersionName, AndroidVersion } =
+      req.body;
     logger.info({
       label: "Authentication",
       message: {
         user: UserType,
         username: Username,
         task: "logged out",
+        versioncode: VersionCode,
+        versionname: VersionName,
+        androidversion: AndroidVersion,
       },
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
@@ -109,7 +113,8 @@ app.post("/video_gallery", (req, res) => {
 
 app.post("/admin_login", (req, res) => {
   try {
-    let { Username, Password } = req.body;
+    let { Username, Password, VersionCode, VersionName, AndroidVersion } =
+      req.body;
     getConnection((err, connection) => {
       if (err)
         return res.json({
@@ -149,6 +154,9 @@ app.post("/admin_login", (req, res) => {
                   username: Username,
                   password: Password,
                   task: "logged in",
+                  versioncode: VersionCode,
+                  versionname: VersionName,
+                  androidversion: AndroidVersion,
                 },
                 timestamp: new Date().toLocaleString(undefined, {
                   timeZone: "Asia/Kolkata",
@@ -177,7 +185,8 @@ app.post("/admin_login", (req, res) => {
 
 app.post("/faculty_login", (req, res) => {
   try {
-    let { Username, Password } = req.body;
+    let { Username, Password, VersionCode, VersionName, AndroidVersion } =
+      req.body;
 
     getConnection((err, connection) => {
       if (err)
@@ -211,6 +220,12 @@ app.post("/faculty_login", (req, res) => {
                   message: "Incorrect Password",
                 });
               }
+              if (rows[0].Status == "Disabled") {
+                return res.json({
+                  success: false,
+                  message: "Your Login has been Disabled..Contact Admin Office",
+                });
+              }
               logger.info({
                 label: "Authentication",
                 message: {
@@ -218,6 +233,9 @@ app.post("/faculty_login", (req, res) => {
                   username: Username,
                   password: Password,
                   task: "logged in",
+                  versioncode: VersionCode,
+                  versionname: VersionName,
+                  androidversion: AndroidVersion,
                 },
                 timestamp: new Date().toLocaleString(undefined, {
                   timeZone: "Asia/Kolkata",
@@ -225,7 +243,11 @@ app.post("/faculty_login", (req, res) => {
               });
               res.json({
                 success: true,
-                data: { Name: rows[0].Faculty_Name, Role: rows[0].Role },
+                data: {
+                  Name: rows[0].Faculty_Name,
+                  Role: rows[0].Role,
+                  Status: rows[0].Status,
+                },
                 message: "",
               });
             }
@@ -246,7 +268,8 @@ app.post("/faculty_login", (req, res) => {
 
 app.post("/student_login", (req, res) => {
   try {
-    let { Username, Password } = req.body;
+    let { Username, Password, VersionCode, VersionName, AndroidVersion } =
+      req.body;
 
     getConnection((err, connection) => {
       if (err)
@@ -293,6 +316,9 @@ app.post("/student_login", (req, res) => {
                   username: Username,
                   password: Password,
                   task: "logged in",
+                  versioncode: VersionCode,
+                  versionname: VersionName,
+                  androidversion: AndroidVersion,
                 },
                 timestamp: new Date().toLocaleString(undefined, {
                   timeZone: "Asia/Kolkata",
@@ -329,11 +355,15 @@ app.post("/student/getclass", (req, res) => {
           message: "Database connection error",
         });
       connection.query(
-        "SELECT Stu_Class AS Class FROM `student_master_data` WHERE Id_No = ?",
+        "SELECT Stu_Class AS Class,Stu_Section AS Section FROM `student_master_data` WHERE Id_No = ?",
         [Id_No],
         (err, rows) => {
           if (err) return res.json({ success: false, message: err });
-          return res.json({ success: true, Class: rows[0]["Class"] });
+          return res.json({
+            success: true,
+            Class: rows[0]["Class"],
+            Section: rows[0]["Section"],
+          });
         }
       );
     });
@@ -371,7 +401,39 @@ app.post("/student/getaccessstatus", (req, res) => {
     });
   } catch (err) {
     logger.error({
-      label: "/student/getclass",
+      label: "/student/getaccessstatus",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/faculty/getaccessstatus", (req, res) => {
+  try {
+    let { Id_No } = req.body;
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      connection.query(
+        "SELECT Status FROM `faculty` WHERE Id_No = ?",
+        [Id_No],
+        (err, rows) => {
+          if (err) return res.json({ success: false, message: err });
+          if (rows.length == 0) {
+            return res.json({ success: true, Status: "Disabled" });
+          }
+          return res.json({ success: true, Status: rows[0]["Status"] });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/faculty/getaccessstatus",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
