@@ -2062,13 +2062,17 @@ app.post("/classwisemarks", (req, res) => {
               marks[id]["Grade"] = "";
             } else {
               let sum = 0,
-                max_sum = parseInt(Max) * subjects.length;
+                max_sum = 0;
+              max_subjects.forEach((sub_max) => {
+                if (sub_max) max_sum += sub_max;
+              });
               Max_Sum = max_sum;
               for (let i = 0; i < subjects.length; i++) {
                 marks[id]["Subjects"][subjects[i]] = rows[0]["sub" + (i + 1)];
                 try {
                   if (
                     marks[id]["Subjects"][subjects[i]] == "A" ||
+                    marks[id]["Subjects"][subjects[i]] == null ||
                     marks[id]["Subjects"][subjects[i]] == ""
                   ) {
                     sum += 0;
@@ -2232,7 +2236,9 @@ app.post("/classwisemarks", (req, res) => {
               [Class, Exam],
               (err, max_marks) => {
                 if (err) return res.json({ success: false, message: err });
-                Max = max_marks[0].Max_Marks;
+                if (max_marks.length != 0) {
+                  Max = max_marks[0].Max_Marks;
+                }
                 resolve();
               }
             );
