@@ -766,7 +766,7 @@ app.post("/student/attendance/upload", async (req, res) => {
             if (err) {
               return resolve({ success: false, message: err });
             }
-            const currentTime = moment().zone("+05:30").format("hh:mm:ss a");
+            const currentTime = moment().utcOffset(330).format("hh:mm:ss a");
             if (rows.length == 0) {
               await connection.query(
                 `INSERT INTO class_attendance (Date, Class, Section, ${Type}_Status, ${Type}_Punch_Time) 
@@ -986,7 +986,7 @@ app.post("/student/vanattendance/upload", async (req, res) => {
             if (err) {
               return resolve({ success: false, message: err });
             }
-            const currentTime = moment().zone("+05:30").format("hh:mm:ss a");
+            const currentTime = moment().utcOffset(330).format("hh:mm:ss a");
             if (rows.length == 0) {
               await connection.query(
                 `INSERT INTO van_attendance (Date, Route, ${Type}_Status, ${Type}_Punch_Time) 
@@ -1841,6 +1841,53 @@ app.post("/student/gethomeworks", (req, res) => {
                   });
                 }
               });
+              return final_data;
+            })
+            .then((final_data) => {
+              return new Promise((resolve, reject) => {
+                connection.query(
+                  "SELECT * FROM `student_homework` WHERE Id_No = ? AND Date = ?",
+                  [Id_No, Date],
+                  (er, rows) => {
+                    if (rows.length == 0) {
+                      final_data.forEach((sub) => {
+                        sub.Image = null;
+                        sub.Text = null;
+                        sub.Response_Time = null;
+                        sub.Viewed_Status = false;
+                      });
+                    } else {
+                      const subjectMap = Object.fromEntries(
+                        rows.map((detail) => [
+                          detail.Subject,
+                          {
+                            Image: detail.Image,
+                            Text: detail.Text,
+                            Response_Time: detail.Response_Time,
+                          },
+                        ])
+                      );
+                      final_data.forEach((item) => {
+                        const details = subjectMap[item.subject];
+                        if (details) {
+                          item.Image = details.Image;
+                          item.Text = details.Text;
+                          item.Response_Time = details.Response_Time;
+                          item.Viewed_Status = true;
+                        } else {
+                          item.Image = null;
+                          item.Text = null;
+                          item.Response_Time = null;
+                          item.Viewed_Status = false;
+                        }
+                      });
+                    }
+                    resolve(final_data);
+                  }
+                );
+              });
+            })
+            .then((final_data) => {
               return res.json({
                 success: true,
                 data: final_data,
@@ -1883,30 +1930,27 @@ app.post("/student/homework/recordlog", (req, res) => {
                   return res.json({ success: false, message: er });
                 }
                 connection.query(
-                  "INSERT INTO `student_homework`(Date,Id_No,Name,Subject,First_View,Latest_View) VALUES(?,?,?,?,?,?)",
+                  `INSERT INTO student_homework (Date, Id_No, Name, Subject, First_View, Latest_View)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE Latest_View = ?`,
                   [
                     Date,
                     Id_No,
                     student[0].First_Name,
                     Subject,
-                    moment().zone("+05:30").format("hh:mm:ss a"),
-                    moment().zone("+05:30").format("hh:mm:ss a"),
+                    moment().utcOffset(330).format("DD-MM-YYYY hh:mm:ss a"),
+                    moment().utcOffset(330).format("DD-MM-YYYY hh:mm:ss a"),
+                    moment().utcOffset(330).format("DD-MM-YYYY hh:mm:ss a"), // Latest_View update
                   ],
-                  (err, rows) => {
-                    if (err) {
-                      return res.json({ success: false, message: err });
-                    }
-                    if (rows["affectedRows"] != 0) {
-                      return res.json({
-                        success: true,
-                        message: "Log Record Inserted Succesfully",
-                      });
-                    } else {
-                      return res.json({
-                        success: false,
-                        message: "Log Record Insertion Failed",
-                      });
-                    }
+                  (err, result) => {
+                    if (err) return res.json({ success: false, message: err });
+                    res.json({
+                      success: true,
+                      message:
+                        result.affectedRows === 1
+                          ? "Log Record Inserted Successfully"
+                          : "Log Record Updated Successfully",
+                    });
                   }
                 );
               }
@@ -1915,7 +1959,7 @@ app.post("/student/homework/recordlog", (req, res) => {
             connection.query(
               "UPDATE `student_homework` SET Latest_View = ? WHERE Date = ? AND Id_No = ? AND Subject = ?",
               [
-                moment().zone("+05:30").format("hh:mm:ss a"),
+                moment().utcOffset(330).format("DD-MM-YYYY hh:mm:ss a"),
                 Date,
                 Id_No,
                 Subject,
@@ -1960,7 +2004,7 @@ app.post("/gethomeworklogs", (req, res) => {
         return res.json({ success: false, message: err });
       }
       connection.query(
-        "SELECT smd.Id_No, smd.First_Name, CASE WHEN sh.Id_No IS NULL THEN 'Not Viewed Yet' ELSE 'Viewed' END AS View_Status, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.First_View END AS First_View, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.Latest_View END AS Latest_View FROM student_master_data smd LEFT JOIN student_homework sh ON smd.Id_No = sh.Id_No AND sh.Date = ? AND sh.Subject = ? WHERE smd.Stu_Class = ? AND smd.Stu_Section = ?",
+        "SELECT smd.Id_No, smd.First_Name, CASE WHEN sh.Id_No IS NULL THEN 'Not Viewed Yet' ELSE 'Viewed' END AS View_Status, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.First_View END AS First_View, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.Latest_View END AS Latest_View, CASE WHEN sh.Id_No IS NULL THEN NULL ELSE sh.Response_Time END AS Response_Time FROM student_master_data smd LEFT JOIN student_homework sh ON smd.Id_No = sh.Id_No AND sh.Date = ? AND sh.Subject = ? WHERE smd.Stu_Class = ? AND smd.Stu_Section = ?",
         [Date, Subject, Class, Section],
         (er, rows) => {
           if (er) {
@@ -2445,6 +2489,67 @@ app.post("/homework/updatedatabase", (req, res) => {
   }
 });
 
+app.post("/student/homework/updatedatabase", (req, res) => {
+  try {
+    const { Id_No, Date, Subject, imgCount, Text, New } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      let img_text = "";
+      if (imgCount == 0) {
+        img_text = null;
+      } else {
+        for (let i = 1; i <= imgCount; i++) {
+          img_text +=
+            "../../Files/Homework/Student Homework/" +
+            Date +
+            "/" +
+            Id_No +
+            "-" +
+            Subject +
+            i +
+            ".jpg";
+          if (i != imgCount) {
+            img_text += ",";
+          }
+        }
+      }
+      connection.query(
+        "UPDATE `student_homework` SET Image = ?,Text = ?,Response_Time = ? WHERE Id_No = ? AND Date = ? AND Subject = ?",
+        [
+          img_text,
+          Text != "" ? Text : null,
+          moment().utcOffset(330).format("DD-MM-YYYY hh:mm:ss a"),
+          Id_No,
+          Date,
+          Subject,
+        ],
+        (t, status) => {
+          connection.release();
+          if (status["affectedRows"] != 0)
+            return res.json({
+              success: true,
+              message: "Database Updated Successfully",
+            });
+          return res.json({
+            success: false,
+            message: "Database Updation Failed",
+          });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/student/homework/updatedatabase",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 app.post("/deletehomework", (req, res) => {
   try {
     const { Class, Section, Date, Subject } = req.body;
@@ -2474,6 +2579,43 @@ app.post("/deletehomework", (req, res) => {
   } catch (err) {
     logger.error({
       label: "/deletehomework",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+app.post("/student/deletehomework", (req, res) => {
+  try {
+    const { Id_No, Date, Subject } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+
+      connection.query(
+        "UPDATE `student_homework` SET Image = NULL,Text = NULL,Response_Time = NULL WHERE Id_No = ? AND Date = ? AND Subject = ?",
+        [Id_No, Date, Subject],
+        (t, val) => {
+          if (val["affectedRows"] != 0) {
+            res.json({
+              success: true,
+              message: "Homework Deleted Successfully",
+            });
+          } else {
+            res.json({
+              success: false,
+              message: "Homework Deletion Failed",
+            });
+          }
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/student/deletehomework",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
