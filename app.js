@@ -1282,15 +1282,12 @@ app.post("/student/attendance/report", (req, res) => {
               let data = {};
               value.map((student) => {
                 if (student) {
-                  if (!Object.keys(data).includes(student.Class)) {
-                    data[student.Class] = {};
-                  }
                   if (
-                    !Object.keys(data[student.Class]).includes(student.Section)
+                    !Object.keys(data).includes(student.Class + student.Section)
                   ) {
-                    data[student.Class][student.Section] = [];
+                    data[student.Class + student.Section] = [];
                   }
-                  data[student.Class][student.Section].push(student);
+                  data[student.Class + student.Section].push(student);
                 }
               });
               res.json({ success: true, data: data });
