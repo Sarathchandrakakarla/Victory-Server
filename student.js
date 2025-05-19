@@ -2084,11 +2084,11 @@ router.post("/commitdates", (req, res) => {
       let params = [];
 
       if (Id_No) {
-        conditions.push("Id_No = ?");
+        conditions.push("cd.Id_No = ?");
         params.push(Id_No);
       }
       if (Date) {
-        conditions.push("DOC = ?");
+        conditions.push("cd.DOC = ?");
         params.push(Date);
       }
       if (Emp_Id) {
@@ -2100,7 +2100,7 @@ router.post("/commitdates", (req, res) => {
         query += " WHERE " + conditions.join(" AND ");
       }
 
-      query += " ORDER BY DOC";
+      query += " ORDER BY cd.DOC";
 
       connection.query(query, params, (er, rows) => {
         if (er) {
@@ -2109,6 +2109,7 @@ router.post("/commitdates", (req, res) => {
         if (rows.length == 0) {
           return res.json({
             success: false,
+            errcode: 1,
             message: "No Commitment Dates Found on " + Date,
           });
         }
