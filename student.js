@@ -2069,7 +2069,7 @@ router.post("/timetable", (req, res) => {
 
 router.post("/commitdates", (req, res) => {
   try {
-    let { Id_No = null, Date = null, Emp_Id = null } = req.body;
+    let { Id_No = null, DOC = null, DOP = null, Emp_Id = null } = req.body;
     getConnection((err, connection) => {
       if (err) {
         console.log(err);
@@ -2087,9 +2087,13 @@ router.post("/commitdates", (req, res) => {
         conditions.push("cd.Id_No = ?");
         params.push(Id_No);
       }
-      if (Date) {
+      if (DOC) {
         conditions.push("cd.DOC = ?");
-        params.push(Date);
+        params.push(DOC);
+      }
+      if (DOP) {
+        conditions.push("cd.DOP = ?");
+        params.push(DOP);
       }
       if (Emp_Id) {
         conditions.push("cd.Emp_Id = ?");
@@ -2100,23 +2104,25 @@ router.post("/commitdates", (req, res) => {
         query += " WHERE " + conditions.join(" AND ");
       }
 
-      query += " ORDER BY cd.DOC";
+      query += " ORDER BY cd.DOP";
 
       connection.query(query, params, (er, rows) => {
         if (er) {
           return res.json({ success: false, message: er });
         }
         if (rows.length == 0) {
-          let text = "";
+          let text = "No Dates Found";
           if (Id_No) {
-            text = " of " + Id_No;
-          } else if (Date) {
-            text = " on " + Date;
+            text = "No Promising Dates Found of " + Id_No;
+          } else if (DOC) {
+            text = "No Committed Dates Found on " + DOC;
+          } else if (DOP) {
+            text = "No Promising Dates Found on " + DOP;
           }
           return res.json({
             success: false,
             errcode: 1,
-            message: "No Commitment Dates Found" + text,
+            message: text,
           });
         }
         return res.json({ success: true, data: rows });
@@ -2186,7 +2192,7 @@ router.post("/addcommitdate", (req, res) => {
 
 router.post("/savecommitstatus", (req, res) => {
   try {
-    let { Id_No, Date, Type, Status, Emp_Id } = req.body;
+    let { Id_No, DOC, DOP, Type, Status, Emp_Id } = req.body;
     getConnection((err, connection) => {
       if (err) {
         console.log(err);
@@ -2196,8 +2202,8 @@ router.post("/savecommitstatus", (req, res) => {
         });
       }
       connection.query(
-        "UPDATE commit_date SET Status = ?,Emp_Id = ? WHERE Id_No = ? AND Type = ? AND DOC = ?",
-        [Status, Emp_Id, Id_No, Type, Date],
+        "UPDATE commit_date SET Status = ?,Emp_Id = ? WHERE Id_No = ? AND Type = ? AND DOC = ? AND DOP = ?",
+        [Status, Emp_Id, Id_No, Type, DOC, DOP],
         (er, rows) => {
           if (er) {
             console.log(er);
@@ -2230,7 +2236,7 @@ router.post("/savecommitstatus", (req, res) => {
 
 router.post("/deletecommitdate", (req, res) => {
   try {
-    let { Id_No, Date, Type } = req.body;
+    let { Id_No, DOC, DOP, Type } = req.body;
     getConnection((err, connection) => {
       if (err) {
         console.log(err);
@@ -2240,8 +2246,8 @@ router.post("/deletecommitdate", (req, res) => {
         });
       }
       connection.query(
-        "DELETE FROM commit_date WHERE Id_No = ? AND Type = ? AND DOC = ?",
-        [Id_No, Type, Date],
+        "DELETE FROM commit_date WHERE Id_No = ? AND Type = ? AND DOC = ? AND DOP = ?",
+        [Id_No, Type, DOC, DOP],
         (er, rows) => {
           if (er) {
             console.log(er);
