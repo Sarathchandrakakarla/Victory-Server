@@ -2151,30 +2151,49 @@ router.post("/addcommitdate", (req, res) => {
         });
       }
       connection.query(
-        "INSERT INTO commit_date(Id_No,Type,DOC,DOP,Status,Emp_Id) VALUES(?,?,?,?,?,?)",
-        [
-          Id_No,
-          Type,
-          moment().utcOffset(330).format("D-MM-YYYY"),
-          Date,
-          Status,
-          Emp_Id,
-        ],
+        "SELECT * FROM student_master_data WHERE Id_No = ?",
+        [Id_No],
         (er, rows) => {
           if (er) {
-            console.log(er);
             return res.json({
               success: false,
               message: er,
             });
           }
-          if (rows.affectedRows === 1) {
-            return res.json({ success: true });
-          } else {
+          if (rows.length == 0) {
             return res.json({
               success: false,
-              message: "Commit Date Insertion Failed!",
+              message: "Student Not Found",
             });
+          } else {
+            connection.query(
+              "INSERT INTO commit_date(Id_No,Type,DOC,DOP,Status,Emp_Id) VALUES(?,?,?,?,?,?)",
+              [
+                Id_No,
+                Type,
+                moment().utcOffset(330).format("D-MM-YYYY"),
+                Date,
+                Status,
+                Emp_Id,
+              ],
+              (er, rows) => {
+                if (er) {
+                  console.log(er);
+                  return res.json({
+                    success: false,
+                    message: er,
+                  });
+                }
+                if (rows.affectedRows === 1) {
+                  return res.json({ success: true });
+                } else {
+                  return res.json({
+                    success: false,
+                    message: "Commit Date Insertion Failed!",
+                  });
+                }
+              }
+            );
           }
         }
       );
