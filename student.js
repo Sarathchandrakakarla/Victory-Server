@@ -2107,10 +2107,16 @@ router.post("/commitdates", (req, res) => {
           return res.json({ success: false, message: er });
         }
         if (rows.length == 0) {
+          let text = "";
+          if (Id_No) {
+            text = " of " + Id_No;
+          } else if (Date) {
+            text = " on " + Date;
+          }
           return res.json({
             success: false,
             errcode: 1,
-            message: "No Commitment Dates Found on " + Date,
+            message: "No Commitment Dates Found" + text,
           });
         }
         return res.json({ success: true, data: rows });
@@ -2119,6 +2125,57 @@ router.post("/commitdates", (req, res) => {
   } catch (err) {
     logger.error({
       label: "/commitdates",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+router.post("/addcommitdate", (req, res) => {
+  try {
+    let { Id_No, Date, Type, Status, Emp_Id } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        console.log(err);
+        return res.json({
+          success: false,
+          message: "Database Connection Error",
+        });
+      }
+      connection.query(
+        "INSERT INTO commit_date(Id_No,Type,DOC,DOP,Status,Emp_Id) VALUES(?,?,?,?,?,?)",
+        [
+          Id_No,
+          Type,
+          moment().utcOffset(330).format("D-MM-YYYY"),
+          Date,
+          Status,
+          Emp_Id,
+        ],
+        (er, rows) => {
+          if (er) {
+            console.log(er);
+            return res.json({
+              success: false,
+              message: er,
+            });
+          }
+          if (rows.affectedRows === 1) {
+            return res.json({ success: true });
+          } else {
+            return res.json({
+              success: false,
+              message: "Commit Date Insertion Failed!",
+            });
+          }
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/addcommitdate",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
@@ -2199,50 +2256,6 @@ router.post("/deletecommitdate", (req, res) => {
             return res.json({
               success: false,
               message: "Commit Date Deletion Failed!",
-            });
-          }
-        }
-      );
-    });
-  } catch (err) {
-    logger.error({
-      label: "/deletecommitdate",
-      message: err,
-      timestamp: new Date().toLocaleString(undefined, {
-        timeZone: "Asia/Kolkata",
-      }),
-    });
-  }
-});
-
-router.post("/addcommitdate", (req, res) => {
-  try {
-    let { Id_No, Date, Type, Status, Emp_Id } = req.body;
-    getConnection((err, connection) => {
-      if (err) {
-        console.log(err);
-        return res.json({
-          success: false,
-          message: "Database Connection Error",
-        });
-      }
-      connection.query(
-        "INSERT INTO commit_date(Id_No,Type,DOC,Status,Emp_Id) VALUES(?,?,?,?,?)",
-        [Id_No, Type, Date, Status, Emp_Id],
-        (er, rows) => {
-          if (er) {
-            console.log(er);
-            return res.json({
-              success: false,
-              message: er,
-            });
-          }
-          if (rows.affectedRows === 1) {
-            return res.json({ success: true });
-          } else {
-            return res.json({
-              success: false,
-              message: "Commit Date Insertion Failed!",
             });
           }
         }
