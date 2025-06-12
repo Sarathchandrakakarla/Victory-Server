@@ -139,7 +139,7 @@ router.post("/viewdetails", (req, res) => {
               function getSiblingsDetails(Sibling_Id_No) {
                 return new Promise((resolve, reject) => {
                   axios
-                    .post("http://18.61.98.208:3000/viewdetails", {
+                    .post("http://18.61.98.208:3000/student/viewdetails", {
                       Id_No: Sibling_Id_No,
                     })
                     .then((sibling_details) => {
@@ -174,7 +174,7 @@ router.post("/viewdetails", (req, res) => {
                 });
             } else {
               axios
-                .post("http://18.61.98.208:3000/viewdetails", {
+                .post("http://18.61.98.208:3000/student/viewdetails", {
                   Id_No: siblings,
                   Sibling_Status: false,
                 })
