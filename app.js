@@ -225,12 +225,32 @@ app.post("/faculty_login", (req, res) => {
                   message: "Incorrect Password",
                 });
               }
-              if (rows[0].Status == "Disabled") {
+              axios
+                .post("http://18.61.98.208:3000/faculty/getaccessstatus", {
+                  Id_No: Username,
+                })
+                .then((res) => {
+                  if (res.data.success) {
+                    if (res.data.Status == "Disabled") {
+                      return res.json({
+                        success: false,
+                        message:
+                          "Your Login has been Disabled..Contact Admin Office",
+                      });
+                    }
+                  } else {
+                    return res.json({
+                      success: false,
+                      message: res.data.message,
+                    });
+                  }
+                });
+              /* if (rows[0].Status == "Disabled") {
                 return res.json({
                   success: false,
                   message: "Your Login has been Disabled..Contact Admin Office",
                 });
-              }
+              } */
               logger.info({
                 label: "Authentication",
                 message: {
