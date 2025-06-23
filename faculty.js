@@ -49,14 +49,20 @@ router.post("/getaccessstatus", (req, res) => {
           message: "Database connection error",
         });
       connection.query(
-        "SELECT Status FROM `faculty` WHERE Id_No = ?",
-        [Id_No],
+        "SELECT emd.Status AS Working_Status,f.Status AS Status FROM employee_master_data emd JOIN `faculty` f ON emd.Emp_Id = f.Id_No WHERE emd.Emp_Id = ? AND f.Id_No = ?",
+        [Id_No, Id_No],
         (err, rows) => {
           if (err) return res.json({ success: false, message: err });
           if (rows.length == 0) {
             return res.json({ success: true, Status: "Disabled" });
           }
-          return res.json({ success: true, Status: rows[0]["Status"] });
+          const status =
+            rows[0]["Working_Status"] === "Left Service" ||
+            rows[0]["Status"] == "Disabled"
+              ? "Disabled"
+              : "Enabled";
+
+          return res.json({ success: true, Status: status });
         }
       );
     });
@@ -146,6 +152,7 @@ router.post("/attendance/view", (req, res) => {
 router.post("/attendance/upload", (req, res) => {
   try {
     let { Id_No, Date, Meridiem, Status, Time } = req.body;
+    Time = Time.replace(/[\u202F\u00A0]/g, '').trim();
 
     getConnection((err, connection) => {
       if (err)
