@@ -1378,6 +1378,33 @@ app.post("/getroutes", (req, res) => {
   }
 });
 
+app.post("/notifications/gettopics", (req, res) => {
+  try {
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({ success: false, message: err });
+      }
+      connection.query("SELECT * FROM `topics`", (er, rows) => {
+        if (er) {
+          return res.json({ success: false, message: er });
+        }
+        return res.json({
+          success: true,
+          data: rows.map((row) => row.Topic),
+        });
+      });
+    });
+  } catch (err) {
+    logger.error({
+      label: "/notifications/gettopics",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 app.post("/notifications/fetchall", (req, res) => {
   try {
     let { Topics } = req.body;
