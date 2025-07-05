@@ -152,7 +152,7 @@ router.post("/attendance/view", (req, res) => {
 router.post("/attendance/upload", (req, res) => {
   try {
     let { Id_No, Date, Meridiem, Status, Time } = req.body;
-    Time = Time.replace(/[\u202F\u00A0]/g, '').trim();
+    Time = Time.replace(/[\u202F\u00A0]/g, "").trim();
 
     getConnection((err, connection) => {
       if (err)
@@ -226,6 +226,58 @@ router.post("/attendance/upload", (req, res) => {
   } catch (err) {
     logger.error({
       label: "/attendance/upload",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
+router.post("/timetable", (req, res) => {
+  try {
+    let { Id_No } = req.body;
+    getConnection((err, connection) => {
+      if (err) {
+        console.log(err);
+        return res.json({
+          success: false,
+          message: "Database Connection Error",
+        });
+      }
+      const params = Array(16).fill(Id_No);
+
+      connection.query(
+        "SELECT GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period1, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period1, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period1, GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period2, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period2, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period2, GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period3, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period3, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period3, GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period4, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period4, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period4, GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period5, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period5, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period5, GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period6, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period6, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period6, GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period7, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period7, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period7, GROUP_CONCAT(CASE WHEN SUBSTRING_INDEX(Period8, ',', 1) = ? THEN CONCAT(Class, ' ', Section, '|', IFNULL(NULLIF(SUBSTRING_INDEX(Period8, ',', -1), ?), 'No Subject')) ELSE NULL END SEPARATOR '; |') AS Period8 FROM time_table",
+        params,
+        (er, rows) => {
+          if (er) {
+            return res.json({ success: false, message: er });
+          }
+          if (rows.length == 0) {
+            return res.json({
+              success: false,
+              message: "Time Table Not Available!",
+            });
+          }
+          let period_data = [];
+          for (let i = 1; i <= 8; i++) {
+            period_data.push(rows[0][`Period${i}`]);
+          }
+          if (
+            Array.isArray(period_data) &&
+            period_data.length === 8 &&
+            period_data.every((item) => item === null)
+          ) {
+            return res.json({ success: true, data: [] });
+          }
+          return res.json({ success: true, data: period_data });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/timetable",
       message: err,
       timestamp: new Date().toLocaleString(undefined, {
         timeZone: "Asia/Kolkata",
