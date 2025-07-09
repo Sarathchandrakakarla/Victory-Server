@@ -2297,6 +2297,51 @@ router.post("/deletecommitdate", (req, res) => {
   }
 });
 
+router.post("/quarterly_performance", (req, res) => {
+  try {
+    let { Id_No } = req.body;
+
+    getConnection((err, connection) => {
+      if (err) {
+        console.error(err);
+        return res.json({
+          success: false,
+          message: "Database Connection Error",
+        });
+      }
+
+      connection.query(
+        `SELECT Id_No,'Q1' AS Quarter,Q1_Reading AS Reading,Q1_Writing AS Writing,Q1_Learning AS Learning,Q1_Handwriting AS Handwriting,Q1_Response AS Response,Q1_Overall AS Overall,Q1_Grade AS Grade,Q1_Timestamp AS Timestamp FROM stu_performance_master WHERE Id_No = ? AND Q1_Reading IS NOT NULL UNION ALL SELECT Id_No,'Q2' AS Quarter,Q2_Reading AS Reading,Q2_Writing AS Writing,Q2_Learning AS Learning,Q2_Handwriting AS Handwriting,Q2_Response AS Response,Q2_Overall AS Overall,Q2_Grade AS Grade,Q2_Timestamp AS Timestamp FROM stu_performance_master WHERE Id_No = ? AND Q2_Reading IS NOT NULL UNION ALL SELECT Id_No,'Q3' AS Quarter,Q3_Reading AS Reading,Q3_Writing AS Writing,Q3_Learning AS Learning,Q3_Handwriting AS Handwriting,Q3_Response AS Response,Q3_Overall AS Overall,Q3_Grade AS Grade,Q3_Timestamp AS Timestamp FROM stu_performance_master WHERE Id_No = ? AND Q3_Reading IS NOT NULL`,
+        [Id_No, Id_No, Id_No],
+        (error, rows) => {
+          if (error) {
+            console.error(error);
+            return res.json({
+              success: false,
+              message: "SQL Query Error",
+            });
+          }
+
+          return res.json({
+            success: true,
+            data: rows.length > 0 ? rows : [],
+            message:
+              rows.length === 0 ? "No quarterly performance available." : null,
+          });
+        }
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/quarterly_performance",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+  }
+});
+
 router.post("/resetpassword", (req, res) => {
   try {
     let { Username, OldPassword, NewPassword } = req.body;
