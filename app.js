@@ -116,7 +116,74 @@ app.post("/video_gallery", (req, res) => {
   }
 });
 
-app.post("/admin_login", (req, res) => {
+const getFullRBACForRole = (connection, roleId) => {
+  return new Promise((resolve, reject) => {
+    connection.query(
+      "SELECT role_name, permission_version FROM roles WHERE role_id = ? AND active_flag = 1",
+      [roleId],
+      (err, roleRows) => {
+        if (err) return reject(err);
+        if (roleRows.length === 0)
+          return reject(new Error("Role inactive or not found"));
+
+        connection.query(
+          `SELECT 
+            m.menu_id,
+            m.display_name,
+            m.parent_flag,
+            m.par_menu_id,
+            m.route,
+            m.icon,
+            m.sequence_id,
+            rm.can_view,
+            rm.can_create,
+            rm.can_update,
+            rm.can_delete,
+            rm.can_print,
+            rm.can_export,
+            rm.can_custom1,
+            rm.can_custom2,
+            rm.can_custom3,
+            rm.can_custom4
+          FROM role_menu_map rm
+          JOIN menus m ON rm.menu_id = m.menu_id
+          WHERE rm.role_id = ?
+          AND m.platform_type = 'app'
+          AND m.active_flag = 1
+          ORDER BY m.sequence_id`,
+          [roleId],
+          (err, menuRows) => {
+            if (err) return reject(err);
+
+            // Build Tree
+            const parents = [];
+            const map = {};
+
+            menuRows.forEach((row) => {
+              row.children = [];
+              map[row.menu_id] = row;
+              if (row.par_menu_id === null) parents.push(row);
+            });
+
+            menuRows.forEach((row) => {
+              if (row.par_menu_id !== null && map[row.par_menu_id]) {
+                map[row.par_menu_id].children.push(row);
+              }
+            });
+
+            resolve({
+              role_name: roleRows[0].role_name,
+              permission_version: roleRows[0].permission_version,
+              menus: parents,
+            });
+          },
+        );
+      },
+    );
+  });
+};
+
+/* app.post("/admin_login", (req, res) => {
   try {
     let { Username, Password, VersionCode, VersionName, AndroidVersion } =
       req.body;
@@ -186,9 +253,278 @@ app.post("/admin_login", (req, res) => {
       }),
     });
   }
+}); */
+
+app.post("/rbac/get_permission_version", (req, res) => {
+  try {
+    const { Username, UserType } = req.body;
+
+    if (!Username || !UserType) {
+      return res.json({
+        success: false,
+        message: "Missing Username or UserType",
+      });
+    }
+
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      }
+
+      // 🔹 Decide table & column based on UserType
+      let table = "";
+      let idColumn = "";
+
+      switch (UserType) {
+        case "Admin":
+          table = "admin";
+          idColumn = "Admin_Id_No";
+          break;
+        case "Faculty":
+          table = "faculty";
+          idColumn = "Id_No";
+          break;
+        case "Student":
+          table = "student";
+          idColumn = "Id_No";
+          break;
+        default:
+          connection.release();
+          return res.json({
+            success: false,
+            force_logout: true,
+            reason: "INVALID_USER_TYPE",
+          });
+      }
+
+      // 🔹 Fetch Role
+      connection.query(
+        `SELECT Role FROM ${table} WHERE ${idColumn} = ?`,
+        [Username],
+        (err, rows) => {
+          if (err || rows.length === 0) {
+            connection.release();
+            return res.json({
+              success: false,
+              force_logout: true,
+              reason: "ACCOUNT_NOT_FOUND",
+            });
+          }
+
+          /* // 🔐 Account inactive → force logout
+          if (rows[0].active_flag !== 1) {
+            connection.release();
+            return res.json({
+              success: false,
+              force_logout: true,
+              reason: "ACCOUNT_INACTIVE",
+            });
+          } */
+
+          const roleId = rows[0].Role;
+
+          // 🔹 Fetch Role Info
+          connection.query(
+            "SELECT role_name, permission_version, active_flag FROM roles WHERE role_id = ?",
+            [roleId],
+            (err, roleRows) => {
+              connection.release();
+
+              if (
+                err ||
+                roleRows.length === 0 ||
+                roleRows[0].active_flag !== 1
+              ) {
+                return res.json({
+                  success: false,
+                  force_logout: true,
+                  reason: "ROLE_INACTIVE",
+                });
+              }
+
+              return res.json({
+                success: true,
+                Role_Id: roleId,
+                Role_Name: roleRows[0].role_name,
+                permission_version: roleRows[0].permission_version,
+              });
+            },
+          );
+        },
+      );
+    });
+  } catch (err) {
+    res.json({ success: false, message: err.message });
+  }
 });
 
-app.post("/faculty_login", (req, res) => {
+app.post("/rbac/get_full_rbac", async (req, res) => {
+  try {
+    const { Username, UserType } = req.body;
+
+    if (!Username || !UserType) {
+      return res.json({
+        success: false,
+        message: "Missing Username or UserType",
+      });
+    }
+
+    getConnection((err, connection) => {
+      if (err) {
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+      }
+
+      let table = "";
+      let idColumn = "";
+
+      switch (UserType) {
+        case "Admin":
+          table = "admin";
+          idColumn = "Admin_Id_No";
+          break;
+        case "Faculty":
+          table = "faculty";
+          idColumn = "Id_No";
+          break;
+        case "Student":
+          table = "student";
+          idColumn = "Id_No";
+          break;
+        default:
+          connection.release();
+          return res.json({
+            success: false,
+            force_logout: true,
+            reason: "INVALID_USER_TYPE",
+          });
+      }
+
+      connection.query(
+        `SELECT Role FROM ${table} WHERE ${idColumn} = ?`,
+        [Username],
+        async (err, rows) => {
+          if (err || rows.length === 0) {
+            connection.release();
+            return res.json({
+              success: false,
+              force_logout: true,
+              reason: "ACCOUNT_NOT_FOUND",
+            });
+          }
+
+          /* if (rows[0].active_flag !== 1) {
+            connection.release();
+            return res.json({
+              success: false,
+              force_logout: true,
+              reason: "ACCOUNT_INACTIVE",
+            });
+          } */
+
+          const roleId = rows[0].Role;
+
+          try {
+            const rbac = await getFullRBACForRole(connection, roleId);
+
+            connection.release();
+
+            const roleKey = UserType === "Faculty" ? "Role" : "Role_Name";
+
+            return res.json({
+              success: true,
+              Role_Id: roleId,
+              [roleKey]: rbac.role_name,
+              permission_version: rbac.permission_version,
+              menus: rbac.menus,
+            });
+          } catch (error) {
+            connection.release();
+            return res.json({
+              success: false,
+              force_logout: true,
+              reason: "RBAC_FETCH_FAILED",
+            });
+          }
+        },
+      );
+    });
+  } catch (err) {
+    res.json({ success: false, message: err.message });
+  }
+});
+
+app.post("/admin_login", (req, res) => {
+  try {
+    let { Username, Password } = req.body;
+
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+
+      connection.query(
+        "SELECT * FROM admin WHERE Admin_Id_No = ?",
+        [Username],
+        async (err, rows) => {
+          if (err || rows.length === 0) {
+            connection.release();
+            return res.json({
+              success: false,
+              message: "User Not Found",
+            });
+          }
+
+          const admin = rows[0];
+
+          bcrypt.compare(
+            Password,
+            admin.Admin_Hash.toString().replace("$2y$", "$2b$"),
+            async (err, result) => {
+              if (err || !result) {
+                connection.release();
+                return res.json({
+                  success: false,
+                  message: "Incorrect Password",
+                });
+              }
+
+              try {
+                const rbac = await getFullRBACForRole(connection, admin.Role);
+                connection.release();
+
+                res.json({
+                  success: true,
+                  data: {
+                    Name: admin.Admin_Name,
+                    Role_Id: admin.Role,
+                    Role_Name: rbac.role_name,
+                    permission_version: rbac.permission_version,
+                    menus: rbac.menus,
+                  },
+                });
+              } catch (error) {
+                connection.release();
+                res.json({ success: false, message: error.message });
+              }
+            },
+          );
+        },
+      );
+    });
+  } catch (err) {
+    res.json({ success: false, message: err.message });
+  }
+});
+
+/* app.post("/faculty_login", (req, res) => {
   try {
     let { Username, Password, VersionCode, VersionName, AndroidVersion } =
       req.body;
@@ -245,12 +581,6 @@ app.post("/faculty_login", (req, res) => {
                     });
                   }
                 });
-              /* if (rows[0].Status == "Disabled") {
-                return res.json({
-                  success: false,
-                  message: "Your Login has been Disabled..Contact Admin Office",
-                });
-              } */
               logger.info({
                 label: "Authentication",
                 message: {
@@ -275,9 +605,9 @@ app.post("/faculty_login", (req, res) => {
                 },
                 message: "",
               });
-            }
+            },
           );
-        }
+        },
       );
     });
   } catch (err) {
@@ -289,9 +619,199 @@ app.post("/faculty_login", (req, res) => {
       }),
     });
   }
+}); */
+app.post("/faculty_login", async (req, res) => {
+  try {
+    let { Username, Password, VersionCode, VersionName, AndroidVersion } =
+      req.body;
+
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+
+      connection.query(
+        "SELECT * FROM faculty WHERE Id_No = ?",
+        [Username],
+        async (err, rows) => {
+          if (err) {
+            connection.release();
+            return res.json({ success: false, message: err.message });
+          }
+
+          if (rows.length === 0) {
+            connection.release();
+            return res.json({ success: false, message: "User Not Found" });
+          }
+
+          bcrypt.compare(
+            Password,
+            rows[0].Fac_Hash.toString().replace("$2y$", "$2b$"),
+            async (err, result) => {
+              if (err) {
+                connection.release();
+                return res.json({ success: false, message: err.message });
+              }
+
+              if (!result) {
+                connection.release();
+                return res.json({
+                  success: false,
+                  message: "Incorrect Password",
+                });
+              }
+
+              try {
+                const accessResponse = await axios.post(
+                  "http://18.61.98.208:3000/faculty/getaccessstatus",
+                  { Id_No: Username },
+                );
+
+                if (!accessResponse.data.success) {
+                  connection.release();
+                  return res.json({
+                    success: false,
+                    message: accessResponse.data.message,
+                  });
+                }
+
+                if (accessResponse.data.Status === "Disabled") {
+                  connection.release();
+                  return res.json({
+                    success: false,
+                    message:
+                      "Your Login has been Disabled..Contact Admin Office",
+                  });
+                }
+              } catch (apiError) {
+                connection.release();
+                return res.json({
+                  success: false,
+                  message: "Access validation service unavailable",
+                });
+              }
+
+              logger.info({
+                label: "Authentication",
+                message: {
+                  user: "Faculty",
+                  username: Username,
+                  task: "logged in",
+                  versioncode: VersionCode,
+                  versionname: VersionName,
+                  androidversion: AndroidVersion,
+                },
+                timestamp: new Date().toLocaleString(undefined, {
+                  timeZone: "Asia/Kolkata",
+                }),
+              });
+
+              const roleId = rows[0].Role;
+
+              // 🔹 Validate Role Active
+              connection.query(
+                "SELECT role_name, permission_version FROM roles WHERE role_id = ? AND active_flag = 1",
+                [roleId],
+                (err, roleRows) => {
+                  if (err || roleRows.length === 0) {
+                    connection.release();
+                    return res.json({
+                      success: false,
+                      message: "Role inactive or not found",
+                    });
+                  }
+
+                  // 🔹 Fetch App Menus
+                  connection.query(
+                    `SELECT 
+                        m.menu_id,
+                        m.display_name,
+                        m.parent_flag,
+                        m.par_menu_id,
+                        m.route,
+                        m.icon,
+                        m.sequence_id,
+                        rm.can_view,
+                        rm.can_create,
+                        rm.can_update,
+                        rm.can_delete,
+                        rm.can_print,
+                        rm.can_export,
+                        rm.can_custom1,
+                        rm.can_custom2,
+                        rm.can_custom3,
+                        rm.can_custom4
+                      FROM role_menu_map rm
+                      JOIN menus m ON rm.menu_id = m.menu_id
+                      WHERE rm.role_id = ?
+                      AND m.platform_type = 'App'
+                      AND m.active_flag = 1
+                      ORDER BY m.sequence_id`,
+                    [roleId],
+                    (err, menuRows) => {
+                      connection.release();
+
+                      if (err) {
+                        return res.json({
+                          success: false,
+                          message: err.message,
+                        });
+                      }
+
+                      // 🔹 Build Menu Tree
+                      const parents = [];
+                      const map = {};
+
+                      menuRows.forEach((row) => {
+                        row.children = [];
+                        map[row.menu_id] = row;
+
+                        if (row.par_menu_id === null) {
+                          parents.push(row);
+                        }
+                      });
+
+                      menuRows.forEach((row) => {
+                        if (row.par_menu_id !== null && map[row.par_menu_id]) {
+                          map[row.par_menu_id].children.push(row);
+                        }
+                      });
+
+                      res.json({
+                        success: true,
+                        data: {
+                          Name: rows[0].Faculty_Name,
+                          Role_Id: roleId,
+                          Role: roleRows[0].role_name,
+                          permission_version: roleRows[0].permission_version,
+                          menus: parents,
+                        },
+                        message: "",
+                      });
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/faculty_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+    res.json({ success: false, message: "Server error" });
+  }
 });
 
-app.post("/student_login", (req, res) => {
+/* app.post("/student_login", (req, res) => {
   try {
     let { Username, Password, VersionCode, VersionName, AndroidVersion } =
       req.body;
@@ -354,9 +874,9 @@ app.post("/student_login", (req, res) => {
                 data: { Name: rows[0].First_Name },
                 message: "",
               });
-            }
+            },
           );
-        }
+        },
       );
     });
   } catch (err) {
@@ -367,6 +887,179 @@ app.post("/student_login", (req, res) => {
         timeZone: "Asia/Kolkata",
       }),
     });
+  }
+}); */
+app.post("/student_login", (req, res) => {
+  try {
+    let { Username, Password, VersionCode, VersionName, AndroidVersion } =
+      req.body;
+
+    getConnection((err, connection) => {
+      if (err)
+        return res.json({
+          success: false,
+          message: "Database connection error",
+        });
+
+      connection.query(
+        `SELECT smd.First_Name, s.*
+         FROM student s
+         JOIN student_master_data smd ON smd.Id_No = s.Id_No
+         WHERE s.Id_No = ?`,
+        [Username],
+        (err, rows) => {
+          if (err) {
+            connection.release();
+            return res.json({ success: false, message: err.message });
+          }
+
+          if (rows.length === 0) {
+            connection.release();
+            return res.json({ success: false, message: "User Not Found" });
+          }
+
+          bcrypt.compare(
+            Password,
+            rows[0].Stu_Hash.toString().replace("$2y$", "$2b$"),
+            (err, result) => {
+              if (err) {
+                connection.release();
+                return res.json({ success: false, message: err.message });
+              }
+
+              if (!result) {
+                connection.release();
+                return res.json({
+                  success: false,
+                  message: "Incorrect Password",
+                });
+              }
+
+              // ✅ Student Status Check
+              if (rows[0].Status === "Disabled") {
+                connection.release();
+                return res.json({
+                  success: false,
+                  message: "Your Login has been Disabled..Contact Admin Office",
+                });
+              }
+
+              logger.info({
+                label: "Authentication",
+                message: {
+                  user: "Student",
+                  username: Username,
+                  task: "logged in",
+                  versioncode: VersionCode,
+                  versionname: VersionName,
+                  androidversion: AndroidVersion,
+                },
+                timestamp: new Date().toLocaleString(undefined, {
+                  timeZone: "Asia/Kolkata",
+                }),
+              });
+
+              const roleId = rows[0].Role;
+
+              // 🔹 Validate Role Active
+              connection.query(
+                "SELECT role_name, permission_version FROM roles WHERE role_id = ? AND active_flag = 1",
+                [roleId],
+                (err, roleRows) => {
+                  if (err || roleRows.length === 0) {
+                    connection.release();
+                    return res.json({
+                      success: false,
+                      message: "Role inactive or not found",
+                    });
+                  }
+
+                  // 🔹 Fetch App Menus
+                  connection.query(
+                    `SELECT 
+                        m.menu_id,
+                        m.display_name,
+                        m.parent_flag,
+                        m.par_menu_id,
+                        m.route,
+                        m.icon,
+                        m.sequence_id,
+                        rm.can_view,
+                        rm.can_create,
+                        rm.can_update,
+                        rm.can_delete,
+                        rm.can_print,
+                        rm.can_export,
+                        rm.can_custom1,
+                        rm.can_custom2,
+                        rm.can_custom3,
+                        rm.can_custom4
+                     FROM role_menu_map rm
+                     JOIN menus m ON rm.menu_id = m.menu_id
+                     WHERE rm.role_id = ?
+                     AND m.platform_type = 'app'
+                     AND m.active_flag = 1
+                     ORDER BY m.sequence_id`,
+                    [roleId],
+                    (err, menuRows) => {
+                      connection.release();
+
+                      if (err) {
+                        return res.json({
+                          success: false,
+                          message: err.message,
+                        });
+                      }
+
+                      // 🔹 Build Menu Tree
+                      const parents = [];
+                      const map = {};
+
+                      menuRows.forEach((row) => {
+                        row.children = [];
+                        map[row.menu_id] = row;
+
+                        if (row.par_menu_id === null) {
+                          parents.push(row);
+                        }
+                      });
+
+                      menuRows.forEach((row) => {
+                        if (row.par_menu_id !== null && map[row.par_menu_id]) {
+                          map[row.par_menu_id].children.push(row);
+                        }
+                      });
+
+                      res.json({
+                        success: true,
+                        data: {
+                          Name: rows[0].First_Name,
+                          Role_Id: roleId,
+                          Role_Name: roleRows[0].role_name,
+                          permission_version: roleRows[0].permission_version,
+                          menus: parents,
+                        },
+                        message: "",
+                      });
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    });
+  } catch (err) {
+    logger.error({
+      label: "/student_login",
+      message: err,
+      timestamp: new Date().toLocaleString(undefined, {
+        timeZone: "Asia/Kolkata",
+      }),
+    });
+
+    res.json({ success: false, message: "Server error" });
   }
 });
 
@@ -388,7 +1081,7 @@ app.post("/fetchexams", (req, res) => {
             return res.json({ success: true, data: ["No Exam Found"] });
           }
           return res.json({ success: true, data: rows.map((row) => row.Exam) });
-        }
+        },
       );
     });
   } catch (err) {
@@ -423,7 +1116,7 @@ app.post("/fetchsubjects", (req, res) => {
             success: true,
             data: rows.map((row) => row.Subjects),
           });
-        }
+        },
       );
     });
   } catch (err) {
@@ -452,7 +1145,7 @@ app.post("/gethomeworklogs", (req, res) => {
             return res.json({ success: false, message: er });
           }
           return res.json({ success: true, data: rows });
-        }
+        },
       );
     });
   } catch (err) {
@@ -513,7 +1206,7 @@ app.post("/classwisemarks", (req, res) => {
                 marks[id]["Total"] = sum;
                 if (MarksType == "Normal") {
                   marks[id]["Percentage"] = parseFloat(
-                    (sum / parseInt(max_sum)) * 100
+                    (sum / parseInt(max_sum)) * 100,
                   ).toFixed(2);
                   if (
                     marks[id]["Percentage"] >= 80 &&
@@ -599,7 +1292,7 @@ app.post("/classwisemarks", (req, res) => {
               }
             }
             resolve([marks, Max_Sum]);
-          }
+          },
         );
       });
     }
@@ -668,9 +1361,9 @@ app.post("/classwisemarks", (req, res) => {
                   Max = max_marks[0].Max_Marks;
                 }
                 resolve();
-              }
+              },
             );
-          })
+          }),
         ).then(() => {
           Promise.resolve(
             new Promise((resolve) => {
@@ -688,9 +1381,9 @@ app.post("/classwisemarks", (req, res) => {
                     subjects.map((subject) => subject.Subjects),
                     subjects.map((subject) => subject.Max_Marks),
                   ]);
-                }
+                },
               );
-            })
+            }),
           ).then((subjects) => {
             let promises = [];
             rows.forEach((row) => {
@@ -701,8 +1394,8 @@ app.post("/classwisemarks", (req, res) => {
                   row.First_Name,
                   Class + " " + row.Section,
                   subjects[0],
-                  subjects[1]
-                )
+                  subjects[1],
+                ),
               );
             });
             Promise.all(promises).then((val) => {
@@ -772,7 +1465,7 @@ app.post("/gethomeworks", (req, res) => {
                       data: [rows[0].Image, rows[0].Text],
                     });
                   }
-                }
+                },
               );
             });
           });
@@ -841,7 +1534,7 @@ app.post("/homework/updatedatabase", (req, res) => {
               success: false,
               message: "Database Updation Failed",
             });
-          }
+          },
         );
       } else {
         connection.query(
@@ -858,7 +1551,7 @@ app.post("/homework/updatedatabase", (req, res) => {
               success: false,
               message: "Database Updation Failed",
             });
-          }
+          },
         );
       }
     });
@@ -896,7 +1589,7 @@ app.post("/deletehomework", (req, res) => {
               message: "Homework Deletion Failed",
             });
           }
-        }
+        },
       );
     });
   } catch (err) {
@@ -929,35 +1622,35 @@ app.post("/getfacultyattendance", (req, res) => {
           }
           let filtered_rows = { AM: {}, PM: {}, Today: {} };
           filtered_rows["AM"]["Present"] = rows.filter(
-            (emp) => emp.AM_Status == "Present"
+            (emp) => emp.AM_Status == "Present",
           );
 
           filtered_rows["AM"]["Absent"] = rows.filter(
-            (emp) => emp.AM_Status == "Absent"
+            (emp) => emp.AM_Status == "Absent",
           );
 
           filtered_rows["AM"]["Leave"] = rows.filter(
-            (emp) => emp.AM_Status == "Leave"
+            (emp) => emp.AM_Status == "Leave",
           );
 
           filtered_rows["AM"]["Not Punched"] = rows.filter(
-            (emp) => emp.AM_Status == "Not Punched"
+            (emp) => emp.AM_Status == "Not Punched",
           );
 
           filtered_rows["PM"]["Absent"] = rows.filter(
-            (emp) => emp.PM_Status == "Absent"
+            (emp) => emp.PM_Status == "Absent",
           );
 
           filtered_rows["PM"]["Present"] = rows.filter(
-            (emp) => emp.PM_Status == "Present"
+            (emp) => emp.PM_Status == "Present",
           );
 
           filtered_rows["PM"]["Leave"] = rows.filter(
-            (emp) => emp.PM_Status == "Leave"
+            (emp) => emp.PM_Status == "Leave",
           );
 
           filtered_rows["PM"]["Not Punched"] = rows.filter(
-            (emp) => emp.PM_Status == "Not Punched"
+            (emp) => emp.PM_Status == "Not Punched",
           );
 
           // Categorize based on the given conditions
@@ -996,7 +1689,7 @@ app.post("/getfacultyattendance", (req, res) => {
             data: rows,
             filtered_data: filtered_rows,
           });
-        }
+        },
       );
     });
   } catch (err) {
@@ -1034,7 +1727,7 @@ app.post("/getstudentattendance", (req, res) => {
           submitted_classes["PM"] = rows
             .filter((row) => row["PM_Status"] == "Submitted")
             .map((row) => `${row["Class"]} ${row["Section"]}`);
-        }
+        },
       );
       connection.query(
         "SELECT smd.Id_No,smd.First_Name,smd.Stu_Class AS Class,smd.Stu_Section AS Section,COALESCE( CASE WHEN ad.AM = 'A' THEN 'Absent' WHEN ad.AM = 'L' THEN 'Leave' ELSE 'Present' END, 'Present' ) AS AM_Status, COALESCE( CASE WHEN ad.PM = 'A' THEN 'Absent' WHEN ad.PM = 'L' THEN 'Leave' ELSE 'Present' END, 'Present' ) AS PM_Status FROM student_master_data smd LEFT JOIN attendance_daily ad ON smd.Id_No = ad.Id_No AND ad.Date = ? WHERE smd.Stu_Class IN ('PreKG','LKG','UKG','1 CLASS','2 CLASS','3 CLASS','4 CLASS','5 CLASS','6 CLASS','7 CLASS','8 CLASS','9 CLASS','10 CLASS') ORDER BY FIELD(smd.Stu_Class, 'PreKG', 'LKG', 'UKG', '1 CLASS', '2 CLASS', '3 CLASS', '4 CLASS', '5 CLASS', '6 CLASS', '7 CLASS', '8 CLASS', '9 CLASS', '10 CLASS'),FIELD(smd.Stu_Section, 'A', 'B', 'C', 'D');",
@@ -1047,100 +1740,100 @@ app.post("/getstudentattendance", (req, res) => {
           filtered_rows["AM"]["Present"] = rows.filter(
             (student) =>
               submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
-              ) && student.AM_Status == "Present"
+                `${student.Class} ${student.Section}`,
+              ) && student.AM_Status == "Present",
           );
           filtered_rows["AM"]["Absent"] = rows.filter(
             (student) =>
               submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
-              ) && student.AM_Status == "Absent"
+                `${student.Class} ${student.Section}`,
+              ) && student.AM_Status == "Absent",
           );
           filtered_rows["AM"]["Leave"] = rows.filter(
             (student) =>
               submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
-              ) && student.AM_Status == "Leave"
+                `${student.Class} ${student.Section}`,
+              ) && student.AM_Status == "Leave",
           );
           filtered_rows["AM"]["Not Submitted"] = rows.filter(
             (student) =>
               !submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
-              )
+                `${student.Class} ${student.Section}`,
+              ),
           );
           filtered_rows["PM"]["Present"] = rows.filter(
             (student) =>
               submitted_classes["PM"].includes(
-                `${student.Class} ${student.Section}`
-              ) && student.PM_Status == "Present"
+                `${student.Class} ${student.Section}`,
+              ) && student.PM_Status == "Present",
           );
           filtered_rows["PM"]["Absent"] = rows.filter(
             (student) =>
               submitted_classes["PM"].includes(
-                `${student.Class} ${student.Section}`
-              ) && student.PM_Status == "Absent"
+                `${student.Class} ${student.Section}`,
+              ) && student.PM_Status == "Absent",
           );
           filtered_rows["PM"]["Leave"] = rows.filter(
             (student) =>
               submitted_classes["PM"].includes(
-                `${student.Class} ${student.Section}`
-              ) && student.PM_Status == "Leave"
+                `${student.Class} ${student.Section}`,
+              ) && student.PM_Status == "Leave",
           );
           filtered_rows["PM"]["Not Submitted"] = rows.filter(
             (student) =>
               !submitted_classes["PM"].includes(
-                `${student.Class} ${student.Section}`
-              )
+                `${student.Class} ${student.Section}`,
+              ),
           );
           filtered_rows["Today"]["Present"] = rows.filter(
             (student) =>
               (submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
+                `${student.Class} ${student.Section}`,
               ) ||
                 submitted_classes["PM"].includes(
-                  `${student.Class} ${student.Section}`
+                  `${student.Class} ${student.Section}`,
                 )) &&
               (student.AM_Status === "Present" ||
-                student.PM_Status === "Present")
+                student.PM_Status === "Present"),
           );
 
           filtered_rows["Today"]["Leave"] = rows.filter(
             (student) =>
               (submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
+                `${student.Class} ${student.Section}`,
               ) ||
                 submitted_classes["PM"].includes(
-                  `${student.Class} ${student.Section}`
+                  `${student.Class} ${student.Section}`,
                 )) &&
               (student.AM_Status === "Leave" ||
                 student.PM_Status === "Leave") &&
               student.AM_Status !== "Present" &&
-              student.PM_Status !== "Present"
+              student.PM_Status !== "Present",
           );
 
           filtered_rows["Today"]["Absent"] = rows.filter(
             (student) =>
               (submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
+                `${student.Class} ${student.Section}`,
               ) ||
                 submitted_classes["PM"].includes(
-                  `${student.Class} ${student.Section}`
+                  `${student.Class} ${student.Section}`,
                 )) &&
               (student.AM_Status === "Absent" ||
                 student.PM_Status === "Absent") &&
               student.AM_Status !== "Present" &&
               student.PM_Status !== "Present" &&
               student.AM_Status !== "Leave" &&
-              student.PM_Status !== "Leave"
+              student.PM_Status !== "Leave",
           );
           filtered_rows["Today"]["Not Submitted"] = rows.filter(
             (student) =>
               !submitted_classes["AM"].includes(
-                `${student.Class} ${student.Section}`
+                `${student.Class} ${student.Section}`,
               ) &&
               !submitted_classes["PM"].includes(
-                `${student.Class} ${student.Section}`
-              )
+                `${student.Class} ${student.Section}`,
+              ),
           );
 
           return res.json({
@@ -1148,7 +1841,7 @@ app.post("/getstudentattendance", (req, res) => {
             data: rows,
             filtered_data: filtered_rows,
           });
-        }
+        },
       );
     });
   } catch (err) {
@@ -1183,7 +1876,7 @@ app.post("/getvanattendance", (req, res) => {
               }
               routes = rows.map((route) => route["Van_Route"]);
               resolve(routes);
-            }
+            },
           );
         });
       }
@@ -1204,7 +1897,7 @@ app.post("/getvanattendance", (req, res) => {
                 .filter((row) => row["PM_Status"] == "Submitted")
                 .map((row) => row["Route"]);
               resolve(submitted_routes);
-            }
+            },
           );
         });
       }
@@ -1223,35 +1916,37 @@ app.post("/getvanattendance", (req, res) => {
               filtered_rows["AM"]["Present"] = rows.filter(
                 (student) =>
                   submitted_routes["AM"].includes(student.Van_Route) &&
-                  student.AM_Status == "Present"
+                  student.AM_Status == "Present",
               );
               filtered_rows["AM"]["Absent"] = rows.filter(
                 (student) =>
                   submitted_routes["AM"].includes(student.Van_Route) &&
-                  student.AM_Status == "Absent"
+                  student.AM_Status == "Absent",
               );
               filtered_rows["AM"]["Not Submitted"] = rows.filter(
-                (student) => !submitted_routes["AM"].includes(student.Van_Route)
+                (student) =>
+                  !submitted_routes["AM"].includes(student.Van_Route),
               );
               filtered_rows["PM"]["Present"] = rows.filter(
                 (student) =>
                   submitted_routes["PM"].includes(student.Van_Route) &&
-                  student.PM_Status == "Present"
+                  student.PM_Status == "Present",
               );
               filtered_rows["PM"]["Absent"] = rows.filter(
                 (student) =>
                   submitted_routes["PM"].includes(student.Van_Route) &&
-                  student.PM_Status == "Absent"
+                  student.PM_Status == "Absent",
               );
               filtered_rows["PM"]["Not Submitted"] = rows.filter(
-                (student) => !submitted_routes["PM"].includes(student.Van_Route)
+                (student) =>
+                  !submitted_routes["PM"].includes(student.Van_Route),
               );
               filtered_rows["Today"]["Present"] = rows.filter(
                 (student) =>
                   (submitted_routes["AM"].includes(student.Van_Route) ||
                     submitted_routes["PM"].includes(student.Van_Route)) &&
                   (student.AM_Status === "Present" ||
-                    student.PM_Status === "Present")
+                    student.PM_Status === "Present"),
               );
 
               filtered_rows["Today"]["Absent"] = rows.filter(
@@ -1261,12 +1956,12 @@ app.post("/getvanattendance", (req, res) => {
                   (student.AM_Status === "Absent" ||
                     student.PM_Status === "Absent") &&
                   student.AM_Status !== "Present" &&
-                  student.PM_Status !== "Present"
+                  student.PM_Status !== "Present",
               );
               filtered_rows["Today"]["Not Submitted"] = rows.filter(
                 (student) =>
                   !submitted_routes["AM"].includes(student.Van_Route) &&
-                  !submitted_routes["PM"].includes(student.Van_Route)
+                  !submitted_routes["PM"].includes(student.Van_Route),
               );
               resolve(filtered_rows);
 
@@ -1275,7 +1970,7 @@ app.post("/getvanattendance", (req, res) => {
                 data: rows,
                 filtered_data: filtered_rows,
               });
-            }
+            },
           );
         });
       }
@@ -1331,10 +2026,10 @@ app.post("/admin/resetpassword", (req, res) => {
                   success: true,
                   message: "Password Updated Successfully",
                 });
-              }
+              },
             );
           });
-        }
+        },
       );
     });
   } catch (err) {
@@ -1364,7 +2059,7 @@ app.post("/getroutes", (req, res) => {
             success: true,
             data: rows.map((row) => row.Van_Route),
           });
-        }
+        },
       );
     });
   } catch (err) {
@@ -1427,9 +2122,9 @@ app.post("/notifications/fetchall", (req, res) => {
                   return resolve(null);
                 }
                 return resolve(rows);
-              }
+              },
             );
-          })
+          }),
         );
       });
       Promise.all(promises)
@@ -1499,9 +2194,9 @@ app.post("/notifications/send", (req, res) => {
                   return res.json({ success: false, message: e });
                 }
                 return true;
-              }
+              },
             );
-          }
+          },
         );
       });
     }
@@ -1543,7 +2238,7 @@ app.post("/notifications/send", (req, res) => {
               Authorization: "Bearer " + Token,
             },
             body: JSON.stringify(message),
-          }
+          },
         )
           .then((r) => {
             if (r.ok) {
@@ -1636,13 +2331,13 @@ app.get("/getactivity", async (req, res) => {
 
     if (label) {
       filteredLogs = filteredLogs.filter(
-        (log) => log.label && log.label.toLowerCase() === label.toLowerCase()
+        (log) => log.label && log.label.toLowerCase() === label.toLowerCase(),
       );
     }
 
     if (level) {
       filteredLogs = filteredLogs.filter(
-        (log) => log.level && log.level.toLowerCase() === level.toLowerCase()
+        (log) => log.level && log.level.toLowerCase() === level.toLowerCase(),
       );
     }
 
@@ -1651,7 +2346,7 @@ app.get("/getactivity", async (req, res) => {
         (log) =>
           log.message &&
           log.message.task &&
-          log.message.task.toLowerCase() === task.toLowerCase()
+          log.message.task.toLowerCase() === task.toLowerCase(),
       );
     }
 
@@ -1660,7 +2355,7 @@ app.get("/getactivity", async (req, res) => {
         (log) =>
           log.message &&
           log.message.user &&
-          log.message.user.toLowerCase() === user.toLowerCase()
+          log.message.user.toLowerCase() === user.toLowerCase(),
       );
     }
 
@@ -1669,21 +2364,21 @@ app.get("/getactivity", async (req, res) => {
         (log) =>
           log.message &&
           log.message.username &&
-          log.message.username.toLowerCase() === username.toLowerCase()
+          log.message.username.toLowerCase() === username.toLowerCase(),
       );
     }
 
     if (start) {
       // Filter logs based on timestamp (start date)
       filteredLogs = filteredLogs.filter(
-        (log) => new Date(log.timestamp) >= new Date(start)
+        (log) => new Date(log.timestamp) >= new Date(start),
       );
     }
 
     if (end) {
       // Filter logs based on timestamp (end date)
       filteredLogs = filteredLogs.filter(
-        (log) => new Date(log.timestamp) <= new Date(end)
+        (log) => new Date(log.timestamp) <= new Date(end),
       );
     }
 
@@ -1698,7 +2393,7 @@ app.listen(PORT, "0.0.0.0", (error) => {
   try {
     if (!error) {
       console.log(
-        "Server is successfully running, and app is listening on port " + PORT
+        "Server is successfully running, and app is listening on port " + PORT,
       );
     } else {
       console.log("Error occurred, server can't start", error);
